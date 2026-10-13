@@ -1,0 +1,114 @@
+# Local two-site stack for syncing: staging and production WordPress + MariaDB.
+#   docker compose up -d && ./setup.sh
+# Staging: http://localhost:8090, production: http://localhost:8091 (admin / admin).
+# WP-CLI: docker compose run --rm cli-staging wp ... (or cli-production).
+name: jcore-silta-dev
+
+# No WORDPRESS_AUTH_KEY etc.: the image generates random salts per volume, so
+# staging and production encrypt their Silta keys with different salts.
+# WP_DEBUG comes from WORDPRESS_DEBUG; the image defines it before
+# WORDPRESS_CONFIG_EXTRA runs, so defining it there again would warn.
+x-staging-env: &staging-env
+  WORDPRESS_DB_HOST: db
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_PASSWORD: wordpress
+  WORDPRESS_DB_NAME: staging
+  WORDPRESS_DEBUG: "1"
+  WORDPRESS_CONFIG_EXTRA: |
+    define( 'WP_HOME', 'http://localhost:8090' );
+    define( 'WP_SITEURL', 'http://localhost:8090' );
+    define( 'WP_ENVIRONMENT_TYPE', 'local' );
+    define( 'WP_DEBUG_LOG', true );
+    define( 'WP_DEBUG_DISPLAY', false );
+
+x-production-env: &production-env
+  WORDPRESS_DB_HOST: db
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_PASSWORD: wordpress
+  WORDPRESS_DB_NAME: production
+  WORDPRESS_DEBUG: "1"
+  WORDPRESS_CONFIG_EXTRA: |
+    define( 'WP_HOME', 'http://localhost:8091' );
+    define( 'WP_SITEURL', 'http://localhost:8091' );
+    define( 'WP_ENVIRONMENT_TYPE', 'local' );
+    define( 'WP_DEBUG_LOG', true );
+    define( 'WP_DEBUG_DISPLAY', false );
+
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - db:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  staging:
+    image: wordpress:php8.3-apache
+    depends_on: [db]
+    ports:
+      - "8090:80"
+    environment: *staging-env
+    volumes:
+      - staging:/var/www/html
+      - ..:/var/www/html/wp-content/plugins/jcore-silta:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+
+  production:
+    image: wordpress:php8.3-apache
+    depends_on: [db]
+    ports:
+      - "8091:80"
+    environment: *production-env
+    volumes:
+      - production:/var/www/html
+      - ..:/var/www/html/wp-content/plugins/jcore-silta:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+
+  cli-staging:
+    image: wordpress:cli-php8.3
+    profiles: [cli]
+    user: "33:33"
+    depends_on: [db, staging]
+    environment:
+      <<: *staging-env
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+    volumes:
+      - staging:/var/www/html
+      - ..:/var/www/html/wp-content/plugins/jcore-silta:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+      - ./seed:/seed:ro
+
+  cli-production:
+    image: wordpress:cli-php8.3
+    profiles: [cli]
+    user: "33:33"
+    depends_on: [db, production]
+    environment:
+      <<: *production-env
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+    volumes:
+      - production:/var/www/html
+      - ..:/var/www/html/wp-content/plugins/jcore-silta:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+      - ./seed:/seed:ro
+
+  # Used once by setup.sh to copy staging's uploads into production.
+  copy-uploads:
+    image: alpine
+    profiles: [tools]
+    volumes:
+      - staging:/staging:ro
+      - production:/production
+    command: >-
+      sh -c 'rm -rf /production/wp-content/uploads
+      && cp -a /staging/wp-content/uploads /production/wp-content/uploads'
+
+volumes:
+  db:
+  staging:
+  production:
