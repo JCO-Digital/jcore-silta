@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<ruleset name="JCORE Silta">
+	<description>WordPress coding standards for the JCORE Silta plugin.</description>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="ps"/>
+
+	<file>.</file>
+
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/build/*</exclude-pattern>
+	<exclude-pattern>*/release/*</exclude-pattern>
+	<exclude-pattern>*/.phpunit.cache/*</exclude-pattern>
+
+	<config name="testVersion" value="8.2-"/>
+	<config name="minimum_wp_version" value="6.7"/>
+
+	<rule ref="PHPCompatibilityWP"/>
+
+	<rule ref="WordPress-Docs"/>
+	<rule ref="WordPress-Extra">
+		<exclude name="WordPress.PHP.YodaConditions"/>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="jcore-silta"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- PHPUnit conventions: TestCase file names and self-describing test_* methods. -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>*/tests/unit/*</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.Commenting.FunctionComment.Missing">
+		<exclude-pattern>*/tests/unit/*</exclude-pattern>
+	</rule>
+	<!-- Tests build serialized fixtures on purpose. -->
+	<rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+		<exclude-pattern>*/tests/unit/*</exclude-pattern>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="jcore_silta"/>
+				<element value="JCORE_SILTA"/>
+				<element value="Jcore\Silta"/>
+			</property>
+		</properties>
+		<!-- Block render templates run inside the render callback, so their variables are local. -->
+		<exclude-pattern>*/render.php</exclude-pattern>
+	</rule>
+</ruleset>
