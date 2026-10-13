@@ -1,0 +1,51 @@
+name: Integration
+
+# Real pushes and pulls between two WordPress sites in Docker (dev/), checked
+# with WP-CLI on the receiving side. Runs on every pull request and push to
+# main, next to the Release workflow's lint, unit test and build checks.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  two-sites:
+    name: Two-site sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: gd
+          tools: composer
+          coverage: none
+
+      # The sites run the plugin straight from the checkout.
+      - name: Build the plugin
+        run: |
+          pnpm install --frozen-lockfile
+          composer install --no-interaction --prefer-dist
+          pnpm build
+
+      - name: Run the integration tests
+        run: tests/integration/run.sh
+
+      - name: Debug logs
+        if: failure()
+        working-directory: dev
+        run: |
+          for site in staging production; do
+            echo "== $site"
+            docker compose exec -T "$site" sh -c 'cat wp-content/debug.log 2>/dev/null || true'
+          done
