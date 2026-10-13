@@ -1,0 +1,2000 @@
+# Copyright (C) 2026 J&Co Digital Oy
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: JCORE Silta\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/jcore-silta\n"
+"Last-Translator: J&Co Digital Oy\n"
+"Language-Team: Finnish\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-13T11:41:39+00:00\n"
+"PO-Revision-Date: 2026-10-13 12:00+0000\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: jcore-silta\n"
+"Language: fi\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Plugin Name of the plugin
+#: jcore-silta.php
+#: includes/admin/class-menu.php:65
+#: includes/admin/class-menu.php:66
+#: build/admin.js:64
+#: build/editor.js:6
+msgid "JCORE Silta"
+msgstr "JCORE Silta"
+
+#. Plugin URI of the plugin
+#: jcore-silta.php
+msgid "https://github.com/JCO-Digital/jcore-silta"
+msgstr "https://github.com/JCO-Digital/jcore-silta"
+
+#. Description of the plugin
+#: jcore-silta.php
+msgid "Syncs posts, custom fields, terms and media between WordPress sites, with search-replace and a diff mode for choosing what to sync."
+msgstr "Synkronoi artikkelit, lisäkentät, termit ja median WordPress-sivustojen välillä. Mukana on hae ja korvaa -toiminto sekä erojen tarkastelu, jossa valitset, mitä synkronoidaan."
+
+#. Author of the plugin
+#: jcore-silta.php
+msgid "J&Co Digital Oy"
+msgstr "J&Co Digital Oy"
+
+#. Author URI of the plugin
+#: jcore-silta.php
+msgid "https://jco.fi"
+msgstr "https://jco.fi"
+
+#: includes/admin/class-list-actions.php:92
+#: includes/admin/class-list-actions.php:131
+msgid "Push with Silta"
+msgstr "Lähetä Sillan kautta"
+
+#. translators: %s: connected site's label.
+#: includes/admin/class-list-actions.php:115
+#, php-format
+msgid "Pull from %s"
+msgstr "Hae sivustolta %s"
+
+#. translators: %s: address of the site the database came from.
+#: includes/admin/class-notices.php:52
+#, php-format
+msgid "JCORE Silta: this database was copied from %s, so Silta switched off the connections that came with it and gave this site a new identity."
+msgstr "JCORE Silta: tämän sivuston tietokanta on kopio (lähde: %s), joten Silta poisti käytöstä sen mukana tulleet yhteydet ja antoi tälle sivustolle uuden identiteetin."
+
+#: includes/admin/class-notices.php:53
+msgid "another site"
+msgstr "toinen sivusto"
+
+#: includes/admin/class-notices.php:57
+msgid "Review the connections"
+msgstr "Tarkista yhteydet"
+
+#: includes/class-plugin.php:155
+#: build/admin.js:26
+msgid "Open"
+msgstr "Avaa"
+
+#: includes/crypto/class-identity.php:89
+msgid "JCORE_SILTA_PRIVATE_KEY in wp-config.php is not a valid key. Remove it or replace it with the value from \"wp silta key export\"."
+msgstr "wp-config.php-tiedoston JCORE_SILTA_PRIVATE_KEY ei ole kelvollinen avain. Poista se tai korvaa se komennon ”wp silta key export” antamalla arvolla."
+
+#: includes/crypto/class-identity.php:111
+msgid "The key is defined in wp-config.php. Change it there."
+msgstr "Avain on määritetty wp-config.php-tiedostossa. Muuta sitä siellä."
+
+#: includes/crypto/class-identity.php:156
+msgid "This site has no usable signing key. Add the connection again."
+msgstr "Tällä sivustolla ei ole käyttökelpoista allekirjoitusavainta. Lisää yhteys uudelleen."
+
+#: includes/endpoint/class-local.php:134
+msgid "Not an attachment."
+msgstr "Kohde ei ole liite."
+
+#: includes/endpoint/class-local.php:160
+msgid "The import has no job ID."
+msgstr "Tuonnilla ei ole työn tunnistetta."
+
+#: includes/endpoint/class-local.php:208
+msgid "This site has no record of that sync."
+msgstr "Tällä sivustolla ei ole tietoa kyseisestä synkronoinnista."
+
+#: includes/endpoint/class-local.php:211
+msgid "That sync came from another site."
+msgstr "Kyseinen synkronointi tuli toiselta sivustolta."
+
+#: includes/jobs/class-runner.php:104
+#: includes/remote/class-connections.php:172
+#: includes/remote/class-connections.php:229
+#: includes/rest/class-source-controller.php:128
+#: includes/rest/class-source-controller.php:148
+msgid "No such connection."
+msgstr "Yhteyttä ei löydy."
+
+#: includes/jobs/class-runner.php:107
+msgid "Choose push or pull."
+msgstr "Valitse lähetys tai haku."
+
+#: includes/jobs/class-runner.php:123
+msgid "The other site does not allow this site to push to it."
+msgstr "Toinen sivusto ei salli tämän sivuston lähettää sille sisältöä."
+
+#: includes/jobs/class-runner.php:124
+msgid "The other site does not allow this site to pull from it."
+msgstr "Toinen sivusto ei salli tämän sivuston hakea siltä sisältöä."
+
+#: includes/jobs/class-runner.php:135
+msgid "Select something to sync."
+msgstr "Valitse jotain synkronoitavaa."
+
+#: includes/jobs/class-runner.php:176
+#: includes/rest/class-jobs-controller.php:241
+#: includes/rest/class-jobs-controller.php:263
+#: includes/rest/class-jobs-controller.php:324
+#: includes/rest/class-jobs-controller.php:367
+#: includes/rest/class-jobs-controller.php:490
+msgid "No such sync."
+msgstr "Synkronointia ei löydy."
+
+#: includes/jobs/class-runner.php:181
+msgid "The connection this sync used has been removed."
+msgstr "Tämän synkronoinnin käyttämä yhteys on poistettu."
+
+#: includes/jobs/class-runner.php:285
+#: includes/jobs/class-runner.php:313
+#: includes/rest/class-jobs-controller.php:435
+msgid "No such item."
+msgstr "Kohdetta ei löydy."
+
+#: includes/jobs/class-runner.php:334
+msgid "The sync is not ready to run."
+msgstr "Synkronointi ei ole valmis suoritettavaksi."
+
+#: includes/jobs/class-runner.php:394
+msgid "Only syncs that have written something can be undone."
+msgstr "Vain synkronoinnit, jotka ovat kirjoittaneet jotain, voi kumota."
+
+#: includes/jobs/class-runner.php:554
+msgid "It no longer exists on the source site."
+msgstr "Sitä ei enää ole lähdesivustolla."
+
+#: includes/jobs/class-runner.php:937
+msgid "The target did not report on this item."
+msgstr "Kohdesivusto ei raportoinut tästä kohteesta."
+
+#: includes/remote/class-client.php:57
+msgid "This connection came with a copied database. Pair the sites again."
+msgstr "Tämä yhteys tuli kopioidun tietokannan mukana. Yhdistä sivustot uudelleen."
+
+#: includes/remote/class-client.php:60
+msgid "This site's key has changed since the connection was made. Pair the sites again."
+msgstr "Tämän sivuston avain on vaihtunut yhteyden luomisen jälkeen. Yhdistä sivustot uudelleen."
+
+#. translators: %s: error message from the HTTP client.
+#: includes/remote/class-client.php:157
+#, php-format
+msgid "The remote site could not be reached: %s"
+msgstr "Etäsivustoon ei saatu yhteyttä: %s"
+
+#. translators: %s: URL the remote redirected to.
+#: includes/remote/class-client.php:171
+#, php-format
+msgid "The remote site redirected the request to %s. Pair the sites again using that address."
+msgstr "Etäsivusto ohjasi pyynnön osoitteeseen %s. Yhdistä sivustot uudelleen käyttäen sitä osoitetta."
+
+#. translators: %d: HTTP status code.
+#: includes/remote/class-client.php:182
+#, php-format
+msgid "The remote site answered with something other than Silta data (HTTP %d). Check that the plugin is active there and that nothing blocks its REST API."
+msgstr "Etäsivuston vastaus ei ollut Silta-dataa (HTTP %d). Tarkista, että lisäosa on siellä käytössä ja ettei mikään estä sen REST-rajapintaa."
+
+#: includes/remote/class-client.php:191
+msgid "The remote site returned an error."
+msgstr "Etäsivusto palautti virheen."
+
+#: includes/remote/class-connections.php:90
+msgid "This pairing string was created on this site. Paste it on the other site."
+msgstr "Tämä parituskoodi luotiin tällä sivustolla. Liitä se toiselle sivustolle."
+
+#: includes/remote/class-connections.php:116
+msgid "The remote site answered with a different identity than the pairing string promised."
+msgstr "Etäsivusto vastasi eri identiteetillä kuin parituskoodi lupasi."
+
+#. translators: 1: remote protocol version, 2: local protocol version.
+#: includes/remote/class-connections.php:252
+#, php-format
+msgid "The remote runs an incompatible version of Silta (protocol %1$d, this site %2$d). Update the plugin on both sites."
+msgstr "Etäsivustolla on yhteensopimaton Silta-versio (protokolla %1$d, tällä sivustolla %2$d). Päivitä lisäosa molemmille sivustoille."
+
+#: includes/remote/class-connections.php:343
+msgid "That is not a valid pairing string. Copy it again from the other site."
+msgstr "Tämä ei ole kelvollinen parituskoodi. Kopioi se uudelleen toiselta sivustolta."
+
+#: includes/remote/class-connections.php:361
+msgid "The other site does not use HTTPS. Silta only connects to sites over HTTPS, except in local and development environments."
+msgstr "Toinen sivusto ei käytä HTTPS:ää. Silta yhdistää sivustoihin vain HTTPS-yhteydellä, paitsi paikallisissa ympäristöissä ja kehitysympäristöissä."
+
+#: includes/remote/class-trusted-keys.php:95
+msgid "This pairing string is not valid or has already been used."
+msgstr "Tämä parituskoodi ei ole kelvollinen tai se on jo käytetty."
+
+#: includes/remote/class-trusted-keys.php:104
+msgid "This pairing string has expired. Create a new one."
+msgstr "Tämä parituskoodi on vanhentunut. Luo uusi."
+
+#: includes/remote/class-trusted-keys.php:109
+msgid "The public key is not valid."
+msgstr "Julkinen avain ei ole kelvollinen."
+
+#: includes/remote/class-trusted-keys.php:114
+msgid "The site ID is not valid."
+msgstr "Sivuston tunniste ei ole kelvollinen."
+
+#: includes/remote/class-trusted-keys.php:220
+msgid "No such site."
+msgstr "Sivustoa ei löydy."
+
+#: includes/remote/class-verifier.php:105
+msgid "This site does not recognise the calling site. Pair the sites again."
+msgstr "Tämä sivusto ei tunnista kutsuvaa sivustoa. Yhdistä sivustot uudelleen."
+
+#: includes/remote/class-verifier.php:112
+msgid "The request is too old, or the two servers' clocks disagree by more than five minutes."
+msgstr "Pyyntö on liian vanha, tai palvelinten kellot eroavat toisistaan yli viisi minuuttia."
+
+#: includes/remote/class-verifier.php:128
+msgid "This request has already been received."
+msgstr "Tämä pyyntö on jo vastaanotettu."
+
+#: includes/remote/class-verifier.php:136
+msgid "The remote site was copied from another site, so its connections are switched off. An admin there has to re-enable this site, or you pair again."
+msgstr "Etäsivusto on kopioitu toiselta sivustolta, joten sen yhteydet on poistettu käytöstä. Sen ylläpitäjän on otettava tämä sivusto uudelleen käyttöön, tai sivustot on yhdistettävä uudelleen."
+
+#: includes/remote/class-verifier.php:137
+msgid "An admin on the remote site has switched off this connection."
+msgstr "Etäsivuston ylläpitäjä on poistanut tämän yhteyden käytöstä."
+
+#: includes/remote/class-verifier.php:146
+msgid "The remote site does not allow this site to write to it."
+msgstr "Etäsivusto ei salli tämän sivuston kirjoittaa siihen."
+
+#: includes/remote/class-verifier.php:147
+msgid "The remote site does not allow this site to read from it."
+msgstr "Etäsivusto ei salli tämän sivuston lukea sen sisältöä."
+
+#: includes/remote/class-verifier.php:154
+msgid "The admin who allowed this connection on the remote site no longer has the rights to do so. Pair the sites again."
+msgstr "Etäsivuston ylläpitäjällä, joka salli tämän yhteyden, ei ole enää siihen oikeuksia. Yhdistä sivustot uudelleen."
+
+#: includes/remote/class-verifier.php:179
+msgid "The pairing request could not be verified."
+msgstr "Parituspyyntöä ei voitu varmentaa."
+
+#: includes/rest/class-connections-controller.php:281
+msgid "Allow reading, writing or both."
+msgstr "Salli lukeminen, kirjoittaminen tai molemmat."
+
+#: includes/rest/class-connections-controller.php:345
+msgid "This site has no key yet. It gets one when it first connects to another site."
+msgstr "Tällä sivustolla ei ole vielä avainta. Se saa avaimen, kun se yhdistää toiseen sivustoon ensimmäisen kerran."
+
+#: includes/rest/class-jobs-controller.php:266
+msgid "A sync that has written something stays in the history."
+msgstr "Synkronointi, joka on kirjoittanut jotain, jää historiaan."
+
+#: includes/rest/class-jobs-controller.php:327
+msgid "This sync has already been undone."
+msgstr "Tämä synkronointi on jo kumottu."
+
+#: includes/rest/class-jobs-controller.php:493
+msgid "This sync has already started; its selection can no longer change."
+msgstr "Tämä synkronointi on jo alkanut, joten sen valintoja ei voi enää muuttaa."
+
+#: includes/rest/class-remote-controller.php:118
+msgid "The request was not verified."
+msgstr "Pyyntöä ei varmennettu."
+
+#: includes/rest/class-status-controller.php:60
+msgid "This post cannot be synced."
+msgstr "Tätä artikkelia ei voi synkronoida."
+
+#: includes/sync/class-differ.php:142
+msgid "Description"
+msgstr "Kuvaus"
+
+#: includes/sync/class-differ.php:142
+#: build/admin.js:32
+#: build/admin.js:57
+msgid "Content"
+msgstr "Sisältö"
+
+#: includes/sync/class-differ.php:152
+#: build/admin.js:32
+msgid "Featured image"
+msgstr "Artikkelikuva"
+
+#: includes/sync/class-differ.php:194
+msgid "Language and translations"
+msgstr "Kieli ja käännökset"
+
+#: includes/sync/class-differ.php:204
+#: build/admin.js:32
+msgid "File"
+msgstr "Tiedosto"
+
+#: includes/sync/class-differ.php:245
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "Name"
+msgstr "Nimi"
+
+#: includes/sync/class-differ.php:252
+msgid "Items"
+msgstr "Kohteet"
+
+#: includes/sync/class-differ.php:259
+msgid "Locations"
+msgstr "Sijainnit"
+
+#: includes/sync/class-differ.php:315
+msgid "Title"
+msgstr "Otsikko"
+
+#: includes/sync/class-differ.php:316
+msgid "Slug"
+msgstr "Polkutunnus"
+
+#: includes/sync/class-differ.php:317
+msgid "Caption"
+msgstr "Kuvateksti"
+
+#: includes/sync/class-differ.php:317
+msgid "Excerpt"
+msgstr "Katkelma"
+
+#: includes/sync/class-differ.php:318
+#: build/admin.js:26
+msgid "Status"
+msgstr "Tila"
+
+#: includes/sync/class-differ.php:319
+#: build/admin.js:26
+msgid "Date"
+msgstr "Päivämäärä"
+
+#: includes/sync/class-differ.php:320
+msgid "Author"
+msgstr "Kirjoittaja"
+
+#: includes/sync/class-differ.php:321
+msgid "Attached to"
+msgstr "Liitetty kohteeseen"
+
+#: includes/sync/class-differ.php:321
+msgid "Parent"
+msgstr "Yläsivu"
+
+#: includes/sync/class-differ.php:322
+msgid "Order"
+msgstr "Järjestys"
+
+#: includes/sync/class-differ.php:323
+msgid "Comments"
+msgstr "Kommentit"
+
+#: includes/sync/class-differ.php:324
+msgid "Pingbacks"
+msgstr "Pingbackit"
+
+#: includes/sync/class-differ.php:325
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "Password"
+msgstr "Salasana"
+
+#: includes/sync/class-differ.php:326
+msgid "Template"
+msgstr "Sivupohja"
+
+#: includes/sync/class-differ.php:327
+msgid "Format"
+msgstr "Muoto"
+
+#: includes/sync/class-differ.php:328
+msgid "Sticky"
+msgstr "Kiinnitetty"
+
+#: includes/sync/class-differ.php:360
+msgid "Yes"
+msgstr "Kyllä"
+
+#: includes/sync/class-differ.php:360
+msgid "No"
+msgstr "Ei"
+
+#: includes/sync/class-importer.php:72
+msgid "Unknown object type."
+msgstr "Tuntematon kohdetyyppi."
+
+#: includes/sync/class-importer.php:386
+#: includes/sync/class-importer.php:429
+msgid "The attachment's file was not transferred."
+msgstr "Liitteen tiedostoa ei siirretty."
+
+#: includes/sync/class-importer.php:649
+msgid "Only posts synced from the other site can be trashed by a sync."
+msgstr "Synkronointi voi siirtää roskakoriin vain toiselta sivustolta synkronoituja artikkeleita."
+
+#: includes/sync/class-media.php:101
+msgid "The file does not belong to this attachment."
+msgstr "Tiedosto ei kuulu tähän liitteeseen."
+
+#: includes/sync/class-media.php:107
+msgid "The file could not be read."
+msgstr "Tiedostoa ei voitu lukea."
+
+#: includes/sync/class-media.php:133
+msgid "The attachment has no file."
+msgstr "Liitteellä ei ole tiedostoa."
+
+#: includes/sync/class-media.php:141
+#: includes/sync/class-media.php:154
+msgid "The attachment has an invalid file path."
+msgstr "Liitteen tiedostopolku on virheellinen."
+
+#: includes/sync/class-media.php:198
+#: includes/sync/class-media.php:317
+msgid "The uploads folder is not writable."
+msgstr "Latauskansioon (uploads) ei voi kirjoittaa."
+
+#: includes/sync/class-media.php:249
+msgid "The transfer does not expect this file."
+msgstr "Siirto ei odota tätä tiedostoa."
+
+#: includes/sync/class-media.php:264
+msgid "The file chunk is invalid."
+msgstr "Tiedoston osa on virheellinen."
+
+#: includes/sync/class-media.php:275
+msgid "A file arrived damaged. Run the sync again."
+msgstr "Tiedosto saapui vioittuneena. Suorita synkronointi uudelleen."
+
+#: includes/sync/class-media.php:312
+msgid "Not every file of the attachment has arrived."
+msgstr "Kaikki liitteen tiedostot eivät ole saapuneet."
+
+#: includes/sync/class-media.php:320
+msgid "Another file appeared at the attachment's path during the sync. Run the sync again."
+msgstr "Liitteen polkuun ilmestyi toinen tiedosto synkronoinnin aikana. Suorita synkronointi uudelleen."
+
+#: includes/sync/class-media.php:323
+msgid "A file could not be moved into the uploads folder."
+msgstr "Tiedostoa ei voitu siirtää latauskansioon."
+
+#: includes/sync/class-media.php:452
+#: includes/sync/class-media.php:458
+msgid "Unknown file transfer."
+msgstr "Tuntematon tiedostonsiirto."
+
+#. translators: %s: menu item title.
+#: includes/sync/class-menus.php:199
+#, php-format
+msgid "Menu item \"%s\" was left out: the page or term it links to is not on this site."
+msgstr "Valikon kohde ”%s” jätettiin pois: sivua tai termiä, johon se linkittää, ei ole tällä sivustolla."
+
+#. translators: %s: menu location slug.
+#: includes/sync/class-menus.php:293
+#, php-format
+msgid "The theme here has no menu location \"%s\"."
+msgstr "Tämän sivuston teemassa ei ole valikon sijaintia ”%s”."
+
+#. translators: %s: post type name.
+#: includes/sync/class-preflight.php:48
+#, php-format
+msgid "This site has no post type \"%s\"."
+msgstr "Tällä sivustolla ei ole sisältötyyppiä ”%s”."
+
+#. translators: %s: taxonomy name.
+#: includes/sync/class-preflight.php:59
+#: includes/sync/class-preflight.php:95
+#, php-format
+msgid "This site has no taxonomy \"%s\"."
+msgstr "Tällä sivustolla ei ole taksonomiaa ”%s”."
+
+#: includes/sync/class-preflight.php:70
+msgid "Polylang is not active on this site."
+msgstr "Polylang ei ole käytössä tällä sivustolla."
+
+#. translators: %s: language code.
+#: includes/sync/class-preflight.php:74
+#, php-format
+msgid "This site has no language \"%s\"."
+msgstr "Tällä sivustolla ei ole kieltä ”%s”."
+
+#: includes/sync/class-preflight.php:131
+msgid "ACF is not active on this site."
+msgstr "ACF ei ole käytössä tällä sivustolla."
+
+#. translators: %s: ACF field key.
+#: includes/sync/class-preflight.php:135
+#, php-format
+msgid "This site has no ACF field %s. Sync the field group first."
+msgstr "Tällä sivustolla ei ole ACF-kenttää %s. Synkronoi kenttäryhmä ensin."
+
+#: build/admin.js:1
+msgid "Something went wrong. Please try again."
+msgstr "Jokin meni vikaan. Yritä uudelleen."
+
+#: build/admin.js:1
+msgid "Being prepared"
+msgstr "Valmistellaan"
+
+#: build/admin.js:1
+msgid "Ready to run"
+msgstr "Valmis suoritettavaksi"
+
+#: build/admin.js:1
+msgid "Not finished"
+msgstr "Kesken"
+
+#: build/admin.js:1
+#: build/admin.js:12
+msgid "Done"
+msgstr "Valmis"
+
+#: build/admin.js:1
+msgid "Undone"
+msgstr "Kumottu"
+
+#: build/admin.js:1
+msgid "Stopped"
+msgstr "Pysäytetty"
+
+#: build/admin.js:1
+msgid "Received"
+msgstr "Vastaanotettu"
+
+#: build/admin.js:1
+msgid "Failed"
+msgstr "Epäonnistui"
+
+#: build/admin.js:1
+msgid "Create"
+msgstr "Luodaan"
+
+#: build/admin.js:1
+msgid "Update"
+msgstr "Päivitetään"
+
+#: build/admin.js:1
+msgid "No changes"
+msgstr "Ei muutoksia"
+
+#: build/admin.js:1
+msgid "Already there"
+msgstr "On jo olemassa"
+
+#: build/admin.js:1
+msgid "Problem"
+msgstr "Ongelma"
+
+#: build/admin.js:1
+msgid "Trash"
+msgstr "Roskakoriin"
+
+#: build/admin.js:1
+msgid "Waiting"
+msgstr "Odottaa"
+
+#. translators: %d: number of items.
+#: build/admin.js:2
+#, js-format
+msgid "%d created"
+msgid_plural "%d created"
+msgstr[0] "%d luotu"
+msgstr[1] "%d luotua"
+
+#. translators: %d: number of items.
+#: build/admin.js:3
+#, js-format
+msgid "%d updated"
+msgid_plural "%d updated"
+msgstr[0] "%d päivitetty"
+msgstr[1] "%d päivitettyä"
+
+#. translators: %d: number of items.
+#: build/admin.js:4
+#, js-format
+msgid "%d unchanged"
+msgid_plural "%d unchanged"
+msgstr[0] "%d ennallaan"
+msgstr[1] "%d ennallaan"
+
+#. translators: %d: number of items.
+#: build/admin.js:5
+#, js-format
+msgid "%d already there"
+msgid_plural "%d already there"
+msgstr[0] "%d oli jo olemassa"
+msgstr[1] "%d oli jo olemassa"
+
+#. translators: %d: number of items.
+#: build/admin.js:6
+#, js-format
+msgid "%d moved to the trash"
+msgid_plural "%d moved to the trash"
+msgstr[0] "%d siirretty roskakoriin"
+msgstr[1] "%d siirrettyä roskakoriin"
+
+#. translators: %d: number of items.
+#: build/admin.js:7
+#, js-format
+msgid "%d skipped"
+msgid_plural "%d skipped"
+msgstr[0] "%d ohitettu"
+msgstr[1] "%d ohitettua"
+
+#. translators: %d: number of items.
+#: build/admin.js:8
+#, js-format
+msgid "%d failed"
+msgid_plural "%d failed"
+msgstr[0] "%d epäonnistui"
+msgstr[1] "%d epäonnistui"
+
+#. translators: %d: number of items.
+#: build/admin.js:9
+#, js-format
+msgid "%d not written"
+msgid_plural "%d not written"
+msgstr[0] "%d jäi kirjoittamatta"
+msgstr[1] "%d jäi kirjoittamatta"
+
+#: build/admin.js:9
+msgid "This connection came with a copied database and is switched off. Pair the sites again."
+msgstr "Tämä yhteys tuli kopioidun tietokannan mukana, ja se on poistettu käytöstä. Yhdistä sivustot uudelleen."
+
+#: build/admin.js:9
+msgid "This site's key has changed, so the other site no longer recognises it. Pair the sites again."
+msgstr "Tämän sivuston avain on vaihtunut, joten toinen sivusto ei enää tunnista sitä. Yhdistä sivustot uudelleen."
+
+#: build/admin.js:9
+msgid "The last attempt to reach this site failed."
+msgstr "Viimeisin yritys tavoittaa tämä sivusto epäonnistui."
+
+#: build/admin.js:9
+msgid "Post"
+msgstr "Artikkeli"
+
+#: build/admin.js:9
+msgid "Page"
+msgstr "Sivu"
+
+#: build/admin.js:9
+msgid "Media"
+msgstr "Media"
+
+#: build/admin.js:9
+msgid "Pattern"
+msgstr "Malli"
+
+#: build/admin.js:9
+#: build/admin.js:34
+#: build/admin.js:54
+msgid "Menu"
+msgstr "Valikko"
+
+#: build/admin.js:9
+msgid "Category"
+msgstr "Kategoria"
+
+#: build/admin.js:9
+msgid "Tag"
+msgstr "Avainsana"
+
+#: build/admin.js:9
+#: build/admin.js:12
+#: build/admin.js:17
+#: build/admin.js:32
+#: build/admin.js:34
+msgid "Cancel"
+msgstr "Peruuta"
+
+#: build/admin.js:9
+msgid "Copied"
+msgstr "Kopioitu"
+
+#: build/admin.js:9
+msgid "Copy"
+msgstr "Kopioi"
+
+#: build/admin.js:9
+msgid "Sites allowed to connect here"
+msgstr "Sivustot, joilla on lupa yhdistää tänne"
+
+#: build/admin.js:9
+msgid "These sites can pull content from this site or push content to it. They act as the administrator who allowed them."
+msgstr "Nämä sivustot voivat hakea sisältöä tältä sivustolta tai lähettää sisältöä tänne. Ne toimivat sen ylläpitäjän nimissä, joka ne salli."
+
+#: build/admin.js:9
+msgid "No sites yet."
+msgstr "Ei vielä sivustoja."
+
+#: build/admin.js:9
+msgid "Allow at least one of the two, or revoke the site instead."
+msgstr "Salli vähintään toinen näistä tai peru sen sijaan sivuston käyttöoikeus."
+
+#: build/admin.js:9
+msgid "Switched off: came with a copied database"
+msgstr "Pois käytöstä: tuli kopioidun tietokannan mukana"
+
+#. translators: 1: user name, 2: relative time.
+#: build/admin.js:10
+#, js-format
+msgid "Acts as %1$s. Last used: %2$s"
+msgstr "Toimii käyttäjänä %1$s. Viimeksi käytetty: %2$s"
+
+#: build/admin.js:10
+msgid "(a deleted user)"
+msgstr "(poistettu käyttäjä)"
+
+#: build/admin.js:10
+msgid "never"
+msgstr "ei koskaan"
+
+#: build/admin.js:10
+#: build/admin.js:12
+msgid "Can pull from this site"
+msgstr "Voi hakea tältä sivustolta"
+
+#: build/admin.js:10
+#: build/admin.js:12
+msgid "Can push to this site"
+msgstr "Voi lähettää tälle sivustolle"
+
+#: build/admin.js:10
+msgid "Enabled"
+msgstr "Käytössä"
+
+#: build/admin.js:10
+msgid "Revoke"
+msgstr "Peru käyttöoikeus"
+
+#: build/admin.js:10
+msgid "Revoke this site?"
+msgstr "Perutaanko tämän sivuston käyttöoikeus?"
+
+#. translators: %s: site name.
+#: build/admin.js:11
+#, js-format
+msgid "%s can no longer connect to this site. Syncs it already made stay as they are."
+msgstr "%s ei voi enää yhdistää tähän sivustoon. Sen jo tekemät synkronoinnit säilyvät ennallaan."
+
+#: build/admin.js:11
+msgid "Waiting to be used"
+msgstr "Odottaa käyttöä"
+
+#: build/admin.js:11
+msgid "Unnamed"
+msgstr "Nimetön"
+
+#. translators: %s: date and time.
+#: build/admin.js:12
+#, js-format
+msgid "valid until %s"
+msgstr "voimassa %s asti"
+
+#: build/admin.js:12
+msgid "Allow a site to connect"
+msgstr "Salli sivuston yhdistäminen"
+
+#: build/admin.js:12
+msgid "This creates a pairing string. Paste it on the other site under Tools → JCORE Silta → Connections → Add a connection."
+msgstr "Tämä luo parituskoodin. Liitä se toisella sivustolla kohdassa Työkalut → JCORE Silta → Yhteydet → Lisää yhteys."
+
+#: build/admin.js:12
+#: build/admin.js:18
+msgid "Pairing string"
+msgstr "Parituskoodi"
+
+#: build/admin.js:12
+msgid "Paste this on the other site within 30 minutes. It works once."
+msgstr "Liitä tämä toiselle sivustolle 30 minuutin kuluessa. Se toimii vain kerran."
+
+#: build/admin.js:12
+msgid "Name of the other site"
+msgstr "Toisen sivuston nimi"
+
+#: build/admin.js:12
+msgid "For example “Staging”."
+msgstr "Esimerkiksi ”Staging”."
+
+#: build/admin.js:12
+msgid "It can read content from here."
+msgstr "Se voi lukea sisältöä täältä."
+
+#: build/admin.js:12
+msgid "It can create and change content here, as you."
+msgstr "Se voi luoda ja muuttaa sisältöä täällä sinun nimissäsi."
+
+#: build/admin.js:12
+msgid "Create a pairing string"
+msgstr "Luo parituskoodi"
+
+#: build/admin.js:12
+msgid "Choose what the other site may do first."
+msgstr "Valitse ensin, mitä toinen sivusto saa tehdä."
+
+#. translators: %d: rule number.
+#: build/admin.js:13
+#, js-format
+msgid "Find (rule %d)"
+msgstr "Etsi (sääntö %d)"
+
+#. translators: %d: rule number.
+#: build/admin.js:14
+#, js-format
+msgid "Replace with (rule %d)"
+msgstr "Korvaa tällä (sääntö %d)"
+
+#: build/admin.js:14
+#: build/admin.js:15
+#: build/admin.js:55
+msgid "Remove"
+msgstr "Poista"
+
+#: build/admin.js:14
+msgid "Add a rule"
+msgstr "Lisää sääntö"
+
+#: build/admin.js:14
+msgid "Sites this site connects to"
+msgstr "Sivustot, joihin tämä sivusto yhdistää"
+
+#: build/admin.js:14
+msgid "From this site you can push to or pull from these sites, as far as they allow it."
+msgstr "Tältä sivustolta voit lähettää sisältöä näille sivustoille tai hakea sisältöä niiltä, siltä osin kuin ne sen sallivat."
+
+#: build/admin.js:14
+msgid "No connections yet."
+msgstr "Ei vielä yhteyksiä."
+
+#: build/admin.js:14
+msgid "Can push"
+msgstr "Voi lähettää"
+
+#: build/admin.js:14
+msgid "Can pull"
+msgstr "Voi hakea"
+
+#: build/admin.js:14
+#: build/admin.js:24
+msgid "Needs attention"
+msgstr "Vaatii huomiota"
+
+#: build/admin.js:14
+msgid "Working"
+msgstr "Toimii"
+
+#: build/admin.js:14
+#: build/admin.js:17
+msgid "Basic auth"
+msgstr "Basic auth"
+
+#. translators: %s: relative time, e.g. "5 mins".
+#: build/admin.js:15
+#, js-format
+msgid "Last checked: %s"
+msgstr "Viimeksi tarkistettu: %s"
+
+#: build/admin.js:15
+msgid "Check"
+msgstr "Tarkista"
+
+#: build/admin.js:15
+msgid "Edit"
+msgstr "Muokkaa"
+
+#: build/admin.js:15
+msgid "Remove this connection?"
+msgstr "Poistetaanko tämä yhteys?"
+
+#. translators: %s: site name.
+#: build/admin.js:16
+#, js-format
+msgid "This site can no longer sync with %s. To connect again, you need a new pairing string from that site. Consider revoking this site there as well."
+msgstr "Tämä sivusto ei voi enää synkronoida sivuston %s kanssa. Jotta voit yhdistää uudelleen, tarvitset uuden parituskoodin siltä sivustolta. Harkitse myös tämän sivuston käyttöoikeuden perumista siellä."
+
+#. translators: %s: site name.
+#: build/admin.js:17
+#, js-format
+msgid "Edit %s"
+msgstr "Muokkaa: %s"
+
+#: build/admin.js:17
+msgid "Only needed when the other site is behind a password. Leave the user empty to remove it."
+msgstr "Tarvitaan vain, jos toinen sivusto on suojattu salasanalla. Poista se jättämällä käyttäjä tyhjäksi."
+
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "User"
+msgstr "Käyttäjä"
+
+#: build/admin.js:17
+msgid "Leave empty to keep the saved password."
+msgstr "Jätä tyhjäksi, jos haluat säilyttää tallennetun salasanan."
+
+#: build/admin.js:17
+msgid "Saved search and replace rules"
+msgstr "Tallennetut hae ja korvaa -säännöt"
+
+#: build/admin.js:17
+msgid "Used for every sync with this site, on top of the automatic address replacement. You can still change them for each sync."
+msgstr "Käytetään jokaisessa synkronoinnissa tämän sivuston kanssa automaattisen osoitteiden korvauksen lisäksi. Voit silti muuttaa niitä synkronointikohtaisesti."
+
+#: build/admin.js:17
+#: build/admin.js:29
+msgid "Save"
+msgstr "Tallenna"
+
+#: build/admin.js:17
+msgid "Add a connection"
+msgstr "Lisää yhteys"
+
+#: build/admin.js:17
+msgid "On the other site, open Tools → JCORE Silta → Connections and choose “Allow a site to connect”. Paste the pairing string it shows here."
+msgstr "Avaa toisella sivustolla Työkalut → JCORE Silta → Yhteydet ja valitse ”Salli sivuston yhdistäminen”. Liitä sen näyttämä parituskoodi tähän."
+
+#. translators: %s: site name.
+#: build/admin.js:18
+#, js-format
+msgid "Connected to %s."
+msgstr "Yhdistetty sivustoon %s."
+
+#: build/admin.js:18
+msgid "Name (optional)"
+msgstr "Nimi (valinnainen)"
+
+#: build/admin.js:18
+msgid "Defaults to the other site’s name."
+msgstr "Oletuksena käytetään toisen sivuston nimeä."
+
+#: build/admin.js:18
+msgid "The other site is behind a password (basic auth)"
+msgstr "Toinen sivusto on suojattu salasanalla (perustunnistautuminen eli basic auth)"
+
+#: build/admin.js:18
+msgid "Connect"
+msgstr "Yhdistä"
+
+#: build/admin.js:18
+msgid "Stored in the database, encrypted with this site’s salts."
+msgstr "Tallennettu tietokantaan ja salattu tämän sivuston suoloilla (salts)."
+
+#: build/admin.js:18
+msgid "Defined in wp-config.php. To change it, edit it there."
+msgstr "Määritetty wp-config.php-tiedostossa. Jos haluat muuttaa sitä, muokkaa sitä siellä."
+
+#: build/admin.js:18
+msgid "No key yet. It is created when this site first connects to another site."
+msgstr "Avainta ei vielä ole. Se luodaan, kun tämä sivusto yhdistää toiseen sivustoon ensimmäisen kerran."
+
+#: build/admin.js:18
+msgid "This site"
+msgstr "Tämä sivusto"
+
+#: build/admin.js:18
+msgid "Address"
+msgstr "Osoite"
+
+#: build/admin.js:18
+msgid "Site ID"
+msgstr "Sivuston tunniste"
+
+#: build/admin.js:18
+msgid "Key"
+msgstr "Avain"
+
+#: build/admin.js:18
+msgid "This site’s key can no longer be read (the salts in wp-config.php changed). Create a new key and pair your connections again."
+msgstr "Tämän sivuston avainta ei voi enää lukea (wp-config.php-tiedoston suolat ovat muuttuneet). Luo uusi avain ja muodosta yhteydet uudelleen."
+
+#: build/admin.js:18
+msgid "This site’s salts are stored in the database instead of wp-config.php, so encrypting the key with them adds no protection. Move the key to wp-config.php."
+msgstr "Tämän sivuston suolat on tallennettu tietokantaan eikä wp-config.php-tiedostoon, joten avaimen salaaminen niillä ei lisää suojaa. Siirrä avain wp-config.php-tiedostoon."
+
+#: build/admin.js:18
+msgid "This site signs its requests to other sites with its key. The other sites only store the matching public key, so a copy of their database can’t be used to sync."
+msgstr "Tämä sivusto allekirjoittaa muille sivustoille lähettämänsä pyynnöt avaimellaan. Muut sivustot tallentavat vain vastaavan julkisen avaimen, joten niiden tietokannan kopiolla ei voi synkronoida."
+
+#: build/admin.js:18
+msgid "Move the key to wp-config.php"
+msgstr "Siirrä avain wp-config.php-tiedostoon"
+
+#: build/admin.js:18
+msgid "Create a new key"
+msgstr "Luo uusi avain"
+
+#: build/admin.js:18
+msgid "Copy this line. It is secret: anyone who has it can sync as this site."
+msgstr "Kopioi tämä rivi. Se on salainen: kuka tahansa, jolla se on, voi synkronoida tämän sivuston nimissä."
+
+#: build/admin.js:18
+msgid "Add it to wp-config.php, above the line “That’s all, stop editing!”."
+msgstr "Lisää se wp-config.php-tiedostoon rivin ”That’s all, stop editing!” yläpuolelle."
+
+#: build/admin.js:18
+msgid "Reload this page. Once the key is found in wp-config.php, the copy in the database is removed automatically."
+msgstr "Lataa tämä sivu uudelleen. Kun avain löytyy wp-config.php-tiedostosta, tietokannassa oleva kopio poistetaan automaattisesti."
+
+#: build/admin.js:18
+msgid "Line for wp-config.php"
+msgstr "Rivi wp-config.php-tiedostoon"
+
+#: build/admin.js:18
+msgid "Create a new key?"
+msgstr "Luodaanko uusi avain?"
+
+#: build/admin.js:18
+msgid "The other sites won’t recognise this site any more. Every connection on this site needs to be paired again."
+msgstr "Muut sivustot eivät enää tunnista tätä sivustoa. Jokainen tämän sivuston yhteys on muodostettava uudelleen."
+
+#. translators: 1: previous site address, 2: date.
+#: build/admin.js:19
+#, js-format
+msgid "This site’s database was copied from %1$s (noticed %2$s). So the copy can’t act as that site, this site got a new identity, and the connections and allowed sites that came with the copy were switched off. Pair the sites you need again."
+msgstr "Tämän sivuston tietokanta on kopio (lähde: %1$s, havaittu %2$s). Jotta kopio ei voisi toimia kyseisen sivuston nimissä, tämä sivusto sai uuden identiteetin, ja kopion mukana tulleet yhteydet ja sallitut sivustot poistettiin käytöstä. Yhdistä tarvitsemasi sivustot uudelleen."
+
+#: build/admin.js:19
+msgid "another address"
+msgstr "toinen osoite"
+
+#: build/admin.js:19
+msgid "Dismiss"
+msgstr "Ohita"
+
+#: build/admin.js:19
+msgid "Previous"
+msgstr "Edellinen"
+
+#. translators: 1: current page, 2: number of pages.
+#: build/admin.js:20
+#, js-format
+msgid "Page %1$d of %2$d"
+msgstr "Sivu %1$d/%2$d"
+
+#: build/admin.js:20
+msgid "Next"
+msgstr "Seuraava"
+
+#: build/admin.js:20
+msgid "Undo this sync"
+msgstr "Kumoa tämä synkronointi"
+
+#: build/admin.js:20
+msgid "Undo this sync?"
+msgstr "Kumotaanko tämä synkronointi?"
+
+#: build/admin.js:20
+msgid "Undo"
+msgstr "Kumoa"
+
+#. translators: %s: site name.
+#: build/admin.js:21
+#, js-format
+msgid "Everything this sync changed on %s is put back as it was before: updated content is restored, new content is removed and trashed posts are restored. Changes made there after the sync are lost."
+msgstr "Kaikki, mitä tämä synkronointi muutti sivustolla %s, palautetaan ennalleen: päivitetty sisältö palautetaan, uusi sisältö poistetaan ja roskakoriin siirretyt artikkelit palautetaan. Siellä synkronoinnin jälkeen tehdyt muutokset menetetään."
+
+#. translators: %s: status, e.g. Done.
+#: build/admin.js:22
+#, js-format
+msgid "Status: %s"
+msgstr "Tila: %s"
+
+#: build/admin.js:22
+msgid "Start another sync"
+msgstr "Aloita uusi synkronointi"
+
+#. translators: %s: site name.
+#: build/admin.js:23
+#: build/admin.js:27
+#, js-format
+msgid "Received from %s"
+msgstr "Vastaanotettu sivustolta %s"
+
+#. translators: %s: target site name.
+#: build/admin.js:24
+#, js-format
+msgid "Synced to %s"
+msgstr "Synkronoitu sivustolle %s"
+
+#: build/admin.js:24
+msgid "This sync was undone"
+msgstr "Tämä synkronointi kumottiin"
+
+#: build/admin.js:24
+msgid "This sync was stopped"
+msgstr "Tämä synkronointi pysäytettiin"
+
+#. translators: %s: error message.
+#: build/admin.js:25
+#, js-format
+msgid "failed: %s"
+msgstr "epäonnistui: %s"
+
+#: build/admin.js:25
+msgid "unknown error"
+msgstr "tuntematon virhe"
+
+#: build/admin.js:25
+msgid "skipped: it was edited on the target and you did not choose to overwrite it."
+msgstr "ohitettu: sitä oli muokattu kohdesivustolla, etkä valinnut sen ylikirjoittamista."
+
+#: build/admin.js:25
+msgid "skipped: it was already gone."
+msgstr "ohitettu: se oli jo poistettu."
+
+#: build/admin.js:25
+msgid "skipped."
+msgstr "ohitettu."
+
+#: build/admin.js:25
+msgid "synced with warnings:"
+msgstr "synkronoitu varoituksin:"
+
+#. translators: 1: restored items, 2: removed items, 3: items taken out of the trash.
+#: build/admin.js:26
+#, js-format
+msgid "Undone: %1$d restored to how they were, %2$d created items removed, %3$d taken back out of the trash."
+msgstr "Kumottu: %1$d palautettu ennalleen, %2$d luotua kohdetta poistettu, %3$d palautettu roskakorista."
+
+#: build/admin.js:26
+#: build/admin.js:64
+msgid "History"
+msgstr "Historia"
+
+#: build/admin.js:26
+msgid "Syncs started here and syncs other sites pushed here. A sync can be undone while its snapshots are kept."
+msgstr "Täällä aloitetut synkronoinnit ja muiden sivustojen tänne lähettämät synkronoinnit. Synkronoinnin voi kumota niin kauan kuin sen tilannevedokset säilytetään."
+
+#: build/admin.js:26
+msgid "No syncs yet."
+msgstr "Ei vielä synkronointeja."
+
+#: build/admin.js:26
+#: build/admin.js:49
+msgid "What"
+msgstr "Mitä"
+
+#: build/admin.js:26
+msgid "By"
+msgstr "Tekijä"
+
+#: build/admin.js:26
+msgid "Result"
+msgstr "Tulos"
+
+#: build/admin.js:26
+msgid "Actions"
+msgstr "Toiminnot"
+
+#. translators: %s: site name.
+#: build/admin.js:28
+#, js-format
+msgid "Pushed to %s"
+msgstr "Lähetetty sivustolle %s"
+
+#. translators: %s: site name.
+#: build/admin.js:29
+#, js-format
+msgid "Pulled from %s"
+msgstr "Haettu sivustolta %s"
+
+#: build/admin.js:29
+msgid "Items per request"
+msgstr "Kohteita pyyntöä kohden"
+
+#: build/admin.js:29
+msgid "How many posts are compared or written in one go. Lower it if requests time out."
+msgstr "Kuinka monta artikkelia verrataan tai kirjoitetaan kerralla. Pienennä arvoa, jos pyynnöt aikakatkaistaan."
+
+#: build/admin.js:29
+msgid "Media chunk size (KB)"
+msgstr "Mediatiedostojen osan koko (kt)"
+
+#: build/admin.js:29
+msgid "Files are sent in pieces of this size. Lower it if the server limits request sizes."
+msgstr "Tiedostot lähetetään tämän kokoisina osina. Pienennä arvoa, jos palvelin rajoittaa pyyntöjen kokoa."
+
+#: build/admin.js:29
+msgid "Keep undo snapshots for (days)"
+msgstr "Kumoamisen tilannevedosten säilytysaika (päivää)"
+
+#: build/admin.js:29
+msgid "After this, a sync can no longer be undone."
+msgstr "Tämän jälkeen synkronointia ei voi enää kumota."
+
+#: build/admin.js:29
+msgid "Time per request (seconds)"
+msgstr "Aika pyyntöä kohden (sekuntia)"
+
+#: build/admin.js:29
+msgid "How long the browser lets the server work before it reports progress. Keep it below the server’s time limit."
+msgstr "Kuinka kauan selain antaa palvelimen työskennellä, ennen kuin se raportoi edistymisestä. Pidä arvo palvelimen aikarajan alapuolella."
+
+#: build/admin.js:29
+#: build/admin.js:64
+msgid "Settings"
+msgstr "Asetukset"
+
+#: build/admin.js:29
+msgid "Settings saved."
+msgstr "Asetukset tallennettu."
+
+#: build/admin.js:29
+msgid "Never sync these meta keys"
+msgstr "Älä koskaan synkronoi näitä meta-avaimia"
+
+#: build/admin.js:29
+msgid "One per line. End a line with * to match every key that starts with it, e.g. _my_plugin_*."
+msgstr "Yksi riviä kohden. Päätä rivi merkkiin *, jolloin se vastaa kaikkia avaimia, jotka alkavat sillä, esim. _my_plugin_*."
+
+#. translators: 1: finished items, 2: all items.
+#: build/admin.js:30
+#, js-format
+msgid "%1$d of %2$d written"
+msgstr "%1$d/%2$d kirjoitettu"
+
+#. translators: 1: finished items, 2: all items.
+#: build/admin.js:31
+#, js-format
+msgid "%1$d of %2$d compared"
+msgstr "%1$d/%2$d verrattu"
+
+#. translators: %s: target site name.
+#: build/admin.js:32
+#, js-format
+msgid "Syncing to %s"
+msgstr "Synkronoidaan sivustolle %s"
+
+#: build/admin.js:32
+msgid "Preparing the sync"
+msgstr "Valmistellaan synkronointia"
+
+#: build/admin.js:32
+msgid "Collecting"
+msgstr "Kerätään"
+
+#: build/admin.js:32
+msgid "Comparing"
+msgstr "Verrataan"
+
+#: build/admin.js:32
+msgid "Finding dependencies"
+msgstr "Etsitään riippuvuuksia"
+
+#: build/admin.js:32
+msgid "Checking for removed posts"
+msgstr "Tarkistetaan poistettuja artikkeleita"
+
+#: build/admin.js:32
+msgid "Ready"
+msgstr "Valmiina"
+
+#: build/admin.js:32
+msgid "Copying media files"
+msgstr "Kopioidaan mediatiedostoja"
+
+#: build/admin.js:32
+msgid "Writing"
+msgstr "Kirjoitetaan"
+
+#: build/admin.js:32
+msgid "Linking references"
+msgstr "Linkitetään viittauksia"
+
+#: build/admin.js:32
+msgid "Moving removed posts to the trash"
+msgstr "Siirretään poistettuja artikkeleita roskakoriin"
+
+#: build/admin.js:32
+msgid "Finished"
+msgstr "Valmis"
+
+#: build/admin.js:32
+msgid "Keep this page open. If it closes, you can continue from History."
+msgstr "Pidä tämä sivu auki. Jos se sulkeutuu, voit jatkaa Historia-välilehdeltä."
+
+#: build/admin.js:32
+msgid "Nothing is written yet. This compares every item with the target."
+msgstr "Mitään ei ole vielä kirjoitettu. Tämä vertaa jokaista kohdetta kohdesivustoon."
+
+#: build/admin.js:32
+msgid "Stop"
+msgstr "Pysäytä"
+
+#: build/admin.js:32
+msgid "Retry"
+msgstr "Yritä uudelleen"
+
+#: build/admin.js:32
+msgid "Stop the sync?"
+msgstr "Pysäytetäänkö synkronointi?"
+
+#: build/admin.js:32
+msgid "What has been written so far stays on the target. You can undo it from History."
+msgstr "Tähän mennessä kirjoitettu jää kohdesivustolle. Voit kumota sen Historia-välilehdeltä."
+
+#: build/admin.js:32
+msgid "For every post, sync only"
+msgstr "Synkronoi jokaisesta artikkelista vain"
+
+#: build/admin.js:32
+msgid "Everything"
+msgstr "Kaikki"
+
+#: build/admin.js:32
+msgid "Fields (title, slug, status…)"
+msgstr "Kentät (otsikko, polkutunnus, tila…)"
+
+#: build/admin.js:32
+msgid "Custom fields"
+msgstr "Lisäkentät"
+
+#: build/admin.js:32
+msgid "Taxonomies"
+msgstr "Taksonomiat"
+
+#: build/admin.js:32
+msgid "Language"
+msgstr "Kieli"
+
+#: build/admin.js:32
+msgid "Apply to all"
+msgstr "Käytä kaikkiin"
+
+#: build/admin.js:32
+msgid "Updates existing posts only in these parts; new posts are always created in full. You can still change the parts for each post below."
+msgstr "Olemassa olevista artikkeleista päivitetään vain nämä osat; uudet artikkelit luodaan aina kokonaan. Voit silti muuttaa osia artikkelikohtaisesti alla."
+
+#: build/admin.js:32
+msgid "Show unchanged parts"
+msgstr "Näytä muuttumattomat osat"
+
+#: build/admin.js:32
+msgid "Fields"
+msgstr "Kentät"
+
+#: build/admin.js:32
+msgid "Menu items"
+msgstr "Valikon kohteet"
+
+#: build/admin.js:32
+msgid "Menu locations"
+msgstr "Valikkojen sijainnit"
+
+#: build/admin.js:32
+msgid "Unchanged"
+msgstr "Ennallaan"
+
+#. translators: %s: target site name.
+#: build/admin.js:33
+#, js-format
+msgid "On %s now"
+msgstr "Nyt sivustolla %s"
+
+#: build/admin.js:33
+msgid "After the sync"
+msgstr "Synkronoinnin jälkeen"
+
+#: build/admin.js:33
+msgid "You chose to create a new copy."
+msgstr "Valitsit uuden kopion luomisen."
+
+#. translators: %d: post ID on the target.
+#: build/admin.js:34
+#, js-format
+msgid "You chose target post #%d."
+msgstr "Valitsit kohdesivuston artikkelin #%d."
+
+#: build/admin.js:34
+msgid "Change the match"
+msgstr "Muuta vastaavuutta"
+
+#: build/admin.js:34
+msgid "Create a new copy instead"
+msgstr "Luo sen sijaan uusi kopio"
+
+#: build/admin.js:34
+msgid "Use another target post ID…"
+msgstr "Käytä toista kohdesivuston artikkelin tunnistetta…"
+
+#: build/admin.js:34
+msgid "Reset to the automatic match"
+msgstr "Palauta automaattinen vastaavuus"
+
+#: build/admin.js:34
+msgid "Post ID on the target"
+msgstr "Artikkelin tunniste kohdesivustolla"
+
+#: build/admin.js:34
+msgid "Use this post"
+msgstr "Käytä tätä artikkelia"
+
+#. translators: 1: post title, 2: target site name.
+#: build/admin.js:35
+#, js-format
+msgid "Move “%1$s” to the trash on %2$s"
+msgstr "Siirrä ”%1$s” roskakoriin sivustolla %2$s"
+
+#. translators: %d: dependency level.
+#: build/admin.js:36
+#, js-format
+msgid "level %d"
+msgstr "taso %d"
+
+#. translators: %d: post ID.
+#: build/admin.js:37
+#, js-format
+msgid "Post #%d on the target."
+msgstr "Artikkeli #%d kohdesivustolla."
+
+#. translators: %s: error message.
+#: build/admin.js:38
+#, js-format
+msgid "This item can’t be synced: %s"
+msgstr "Tätä kohdetta ei voi synkronoida: %s"
+
+#: build/admin.js:38
+msgid "New: everything will be created."
+msgstr "Uusi: kaikki luodaan."
+
+#: build/admin.js:38
+msgid "Hide the changes"
+msgstr "Piilota muutokset"
+
+#: build/admin.js:38
+msgid "Show the changes and choose parts"
+msgstr "Näytä muutokset ja valitse osat"
+
+#: build/admin.js:38
+msgid "Only the chosen parts will be synced."
+msgstr "Vain valitut osat synkronoidaan."
+
+#. translators: 1: title on the target, 2: ID on the target, 3: how it was matched, e.g. "the same slug".
+#: build/admin.js:39
+#, js-format
+msgid "Matches “%1$s” (#%2$d) by %3$s."
+msgstr "Vastaa kohdetta ”%1$s” (#%2$d), peruste: %3$s."
+
+#: build/admin.js:39
+msgid "an earlier sync"
+msgstr "aiempi synkronointi"
+
+#: build/admin.js:39
+msgid "where it originally came from"
+msgstr "alkuperäinen lähde"
+
+#: build/admin.js:39
+msgid "the same ID (GUID)"
+msgstr "sama tunniste (GUID)"
+
+#: build/admin.js:39
+msgid "the same file"
+msgstr "sama tiedosto"
+
+#: build/admin.js:39
+msgid "the same slug"
+msgstr "sama polkutunnus"
+
+#: build/admin.js:39
+msgid "your choice"
+msgstr "oma valintasi"
+
+#: build/admin.js:39
+msgid "Edit on the target"
+msgstr "Muokkaa kohdesivustolla"
+
+#: build/admin.js:39
+msgid "View on the target"
+msgstr "Näytä kohdesivustolla"
+
+#. translators: %s: target site name.
+#: build/admin.js:40
+#, js-format
+msgid "Changed on %s more recently than here."
+msgstr "Muutettu sivustolla %s myöhemmin kuin täällä."
+
+#. translators: %s: target site name.
+#: build/admin.js:41
+#, js-format
+msgid "Edited on %s since the last sync."
+msgstr "Muokattu sivustolla %s edellisen synkronoinnin jälkeen."
+
+#: build/admin.js:41
+msgid "It is skipped unless you overwrite it."
+msgstr "Se ohitetaan, ellet ylikirjoita sitä."
+
+#: build/admin.js:41
+msgid "Overwrite it"
+msgstr "Ylikirjoita se"
+
+#. translators: 1: part of the post, e.g. "Categories", 2: why it can't be synced.
+#: build/admin.js:42
+#, js-format
+msgid "%1$s can’t be synced: %2$s"
+msgstr "%1$s – ei voi synkronoida: %2$s"
+
+#: build/admin.js:42
+msgid "Refers to content the target doesn’t have and this sync doesn’t include. The references will point to nothing:"
+msgstr "Viittaa sisältöön, jota kohdesivustolla ei ole ja jota tämä synkronointi ei sisällä. Viittaukset eivät osoita mihinkään:"
+
+#: build/admin.js:42
+msgid "missing on the source too"
+msgstr "puuttuu myös lähdesivustolta"
+
+#. translators: 1: included items, 2: all items.
+#: build/admin.js:43
+#, js-format
+msgid "%1$d of %2$d included"
+msgstr "%1$d/%2$d mukana"
+
+#: build/admin.js:43
+msgid "Include all"
+msgstr "Ota kaikki mukaan"
+
+#: build/admin.js:43
+msgid "Include none"
+msgstr "Älä ota mitään mukaan"
+
+#: build/admin.js:43
+msgid "Nothing here."
+msgstr "Täällä ei ole mitään."
+
+#. translators: 1: items to show, 2: items not shown yet.
+#: build/admin.js:44
+#, js-format
+msgid "Show %1$d more (%2$d left)"
+msgid_plural "Show %1$d more (%2$d left)"
+msgstr[0] "Näytä %1$d lisää (%2$d jäljellä)"
+msgstr[1] "Näytä %1$d lisää (%2$d jäljellä)"
+
+#: build/admin.js:44
+#: build/admin.js:57
+msgid "Try again"
+msgstr "Yritä uudelleen"
+
+#: build/admin.js:44
+msgid "Review the changes"
+msgstr "Tarkista muutokset"
+
+#: build/admin.js:44
+msgid "Overwrite them all"
+msgstr "Ylikirjoita kaikki"
+
+#. translators: 1: number of posts, 2: target site name.
+#: build/admin.js:45
+#, js-format
+msgid "%1$d post was edited on %2$s since the last sync. It is skipped unless you choose to overwrite it."
+msgid_plural "%1$d posts were edited on %2$s since the last sync. They are skipped unless you choose to overwrite them."
+msgstr[0] "%1$d artikkeli on muokattu sivustolla %2$s edellisen synkronoinnin jälkeen. Se ohitetaan, ellet valitse sen ylikirjoittamista."
+msgstr[1] "%1$d artikkelia on muokattu sivustolla %2$s edellisen synkronoinnin jälkeen. Ne ohitetaan, ellet valitse niiden ylikirjoittamista."
+
+#: build/admin.js:45
+msgid "Add them too"
+msgstr "Lisää nekin"
+
+#. translators: %d: number of items.
+#: build/admin.js:46
+#, js-format
+msgid "%d more item is referenced by the dependencies and is missing on the target."
+msgid_plural "%d more items are referenced by the dependencies and are missing on the target."
+msgstr[0] "Riippuvuudet viittaavat vielä %d kohteeseen, joka puuttuu kohdesivustolta."
+msgstr[1] "Riippuvuudet viittaavat vielä %d kohteeseen, jotka puuttuvat kohdesivustolta."
+
+#: build/admin.js:46
+#: build/admin.js:53
+msgid "Selected"
+msgstr "Valitut"
+
+#: build/admin.js:46
+msgid "Dependencies"
+msgstr "Riippuvuudet"
+
+#: build/admin.js:46
+msgid "Media, terms and posts the selected content refers to, which the target does not have yet."
+msgstr "Media, termit ja artikkelit, joihin valittu sisältö viittaa ja joita kohdesivustolla ei vielä ole."
+
+#: build/admin.js:46
+msgid "Removed on the source"
+msgstr "Poistettu lähdesivustolta"
+
+#. translators: 1: target site name, 2: source site name.
+#: build/admin.js:47
+#, js-format
+msgid "These posts on %1$s came from %2$s in an earlier sync, but the originals no longer exist. Tick the ones to move to the trash. Nothing is deleted permanently."
+msgstr "Nämä sivuston %1$s artikkelit tulivat sivustolta %2$s aiemmassa synkronoinnissa, mutta alkuperäisiä ei enää ole. Valitse ne, jotka siirretään roskakoriin. Mitään ei poisteta pysyvästi."
+
+#: build/admin.js:47
+msgid "Discard and change the options"
+msgstr "Hylkää ja muuta asetuksia"
+
+#: build/admin.js:47
+msgid "Run sync"
+msgstr "Suorita synkronointi"
+
+#: build/admin.js:47
+msgid "Run the sync?"
+msgstr "Suoritetaanko synkronointi?"
+
+#. translators: 1: number of items, 2: target site name.
+#: build/admin.js:48
+#, js-format
+msgid "Write %1$d item to %2$s? Everything changed is snapshotted and can be undone from History."
+msgid_plural "Write %1$d items to %2$s? Everything changed is snapshotted and can be undone from History."
+msgstr[0] "Kirjoitetaanko %1$d kohde sivustolle %2$s? Kaikesta muutetusta otetaan tilannevedos, ja muutokset voi kumota Historia-välilehdeltä."
+msgstr[1] "Kirjoitetaanko %1$d kohdetta sivustolle %2$s? Kaikesta muutetusta otetaan tilannevedos, ja muutokset voi kumota Historia-välilehdeltä."
+
+#. translators: %d: number of posts.
+#: build/admin.js:49
+#, js-format
+msgid "%d post with a conflict will be skipped."
+msgid_plural "%d posts with a conflict will be skipped."
+msgstr[0] "%d ristiriitainen artikkeli ohitetaan."
+msgstr[1] "%d ristiriitaista artikkelia ohitetaan."
+
+#: build/admin.js:49
+msgid "to create"
+msgstr "luodaan"
+
+#: build/admin.js:49
+msgid "to update"
+msgstr "päivitetään"
+
+#: build/admin.js:49
+msgid "unchanged"
+msgstr "ennallaan"
+
+#: build/admin.js:49
+msgid "conflicts"
+msgstr "ristiriitoja"
+
+#: build/admin.js:49
+msgid "problems"
+msgstr "ongelmia"
+
+#: build/admin.js:49
+msgid "to trash"
+msgstr "roskakoriin"
+
+#: build/admin.js:49
+msgid "Where"
+msgstr "Minne"
+
+#: build/admin.js:49
+msgid "How"
+msgstr "Miten"
+
+#: build/admin.js:49
+msgid "Review"
+msgstr "Tarkistus"
+
+#: build/admin.js:49
+#: build/admin.js:64
+msgid "Sync"
+msgstr "Synkronointi"
+
+#: build/admin.js:49
+msgid "(done)"
+msgstr "(valmis)"
+
+#: build/admin.js:49
+msgid "How should it be synced?"
+msgstr "Miten synkronoidaan?"
+
+#. translators: %s: target site name.
+#: build/admin.js:50
+#, js-format
+msgid "Status on %s"
+msgstr "Tila sivustolla %s"
+
+#: build/admin.js:50
+msgid "Same as on the source"
+msgstr "Sama kuin lähdesivustolla"
+
+#: build/admin.js:50
+msgid "A published post is published on the target too."
+msgstr "Julkaistu artikkeli julkaistaan myös kohdesivustolla."
+
+#: build/admin.js:50
+msgid "Always as a draft"
+msgstr "Aina luonnoksena"
+
+#: build/admin.js:50
+msgid "Keep the target's status for existing posts"
+msgstr "Säilytä olemassa olevien artikkelien tila kohdesivustolla"
+
+#: build/admin.js:50
+msgid "New posts get the status they have on the source."
+msgstr "Uudet artikkelit saavat saman tilan kuin lähdesivustolla."
+
+#: build/admin.js:50
+msgid "Review each change and choose which parts to sync"
+msgstr "Tarkista jokainen muutos ja valitse synkronoitavat osat"
+
+#: build/admin.js:50
+msgid "Shows the differences for every post, like the revisions screen, so you can leave out the parts you do not want."
+msgstr "Näyttää jokaisen artikkelin erot versionäkymän tapaan, joten voit jättää pois osat, joita et halua."
+
+#: build/admin.js:50
+msgid "Include dependencies"
+msgstr "Ota riippuvuudet mukaan"
+
+#: build/admin.js:50
+msgid "Also sync the media, terms and posts these refer to when the target doesn't have them."
+msgstr "Synkronoi myös media, termit ja artikkelit, joihin nämä viittaavat, jos niitä ei ole kohdesivustolla."
+
+#: build/admin.js:50
+msgid "Search and replace"
+msgstr "Hae ja korvaa"
+
+#. translators: 1: source site address, 2: target site address.
+#: build/admin.js:51
+#, js-format
+msgid "The site addresses are replaced automatically: %1$s → %2$s. Add rules for anything else that differs between the sites. Plain text, no patterns."
+msgstr "Sivustojen osoitteet korvataan automaattisesti: %1$s → %2$s. Lisää sääntöjä kaikelle muulle, mikä eroaa sivustojen välillä. Pelkkää tekstiä, ei hakulausekkeita."
+
+#: build/admin.js:51
+msgid "The site addresses are replaced automatically. Add rules for anything else that differs between the sites. Plain text, no patterns."
+msgstr "Sivustojen osoitteet korvataan automaattisesti. Lisää sääntöjä kaikelle muulle, mikä eroaa sivustojen välillä. Pelkkää tekstiä, ei hakulausekkeita."
+
+#: build/admin.js:51
+msgid "Save these rules for this connection"
+msgstr "Tallenna nämä säännöt tälle yhteydelle"
+
+#: build/admin.js:51
+#: build/admin.js:57
+msgid "Back"
+msgstr "Takaisin"
+
+#: build/admin.js:51
+msgid "Prepare"
+msgstr "Valmistele"
+
+#: build/admin.js:51
+msgid "Preparing compares the content with the target. Nothing is written yet."
+msgstr "Valmistelu vertaa sisältöä kohdesivustoon. Mitään ei vielä kirjoiteta."
+
+#. translators: %s: post type name, e.g. Pages.
+#: build/admin.js:52
+#, js-format
+msgid "Search %s"
+msgstr "Hae: %s"
+
+#: build/admin.js:52
+msgid "All posts of this type are already selected."
+msgstr "Kaikki tämän sisältötyypin kohteet on jo valittu."
+
+#: build/admin.js:52
+msgid "Nothing found."
+msgstr "Mitään ei löytynyt."
+
+#. translators: %s: date.
+#: build/admin.js:53
+#, js-format
+msgid "changed %s"
+msgstr "muutettu %s"
+
+#: build/admin.js:53
+msgid "Nothing yet. Tick whole post types, single posts or menus."
+msgstr "Ei vielä mitään. Valitse kokonaisia sisältötyyppejä, yksittäisiä artikkeleita tai valikoita."
+
+#. translators: 1: post type name, 2: number of posts.
+#: build/admin.js:54
+#, js-format
+msgid "All %1$s (%2$d)"
+msgid_plural "All %1$s (%2$d)"
+msgstr[0] "Kaikki %1$s (%2$d)"
+msgstr[1] "Kaikki %1$s (%2$d)"
+
+#: build/admin.js:54
+msgid "Clear all"
+msgstr "Tyhjennä kaikki"
+
+#. translators: %s: title of the selected item.
+#: build/admin.js:55
+#, js-format
+msgid "Remove %s"
+msgstr "Poista %s"
+
+#. translators: %d: post ID.
+#: build/admin.js:56
+#, js-format
+msgid "#%d (not found)"
+msgstr "#%d (ei löytynyt)"
+
+#. translators: %s: site name.
+#: build/admin.js:57
+#, js-format
+msgid "What do you want to sync from %s?"
+msgstr "Mitä haluat synkronoida sivustolta %s?"
+
+#: build/admin.js:57
+msgid "Reload the list"
+msgstr "Lataa luettelo uudelleen"
+
+#: build/admin.js:57
+msgid "Next: options"
+msgstr "Seuraavaksi: asetukset"
+
+#. translators: %d: number of posts.
+#: build/admin.js:58
+#, js-format
+msgid "All %d post of this type"
+msgid_plural "All %d posts of this type"
+msgstr[0] "Tämän sisältötyypin kaikki kohteet (%d)"
+msgstr[1] "Tämän sisältötyypin kaikki kohteet (%d)"
+
+#: build/admin.js:58
+msgid "Close"
+msgstr "Sulje"
+
+#: build/admin.js:58
+msgid "Choose posts"
+msgstr "Valitse artikkelit"
+
+#. translators: %d: number of selected posts.
+#: build/admin.js:59
+#, js-format
+msgid "%d selected"
+msgid_plural "%d selected"
+msgstr[0] "%d valittu"
+msgstr[1] "%d valittua"
+
+#: build/admin.js:59
+msgid "Menus"
+msgstr "Valikot"
+
+#. translators: %d: number of menu items.
+#: build/admin.js:60
+#, js-format
+msgid "%d item"
+msgid_plural "%d items"
+msgstr[0] "%d kohde"
+msgstr[1] "%d kohdetta"
+
+#. translators: 1: number of items, 2: comma-separated theme locations.
+#: build/admin.js:61
+#, js-format
+msgid "%1$s, shown in: %2$s"
+msgstr "%1$s, näytetään sijainneissa: %2$s"
+
+#: build/admin.js:61
+msgid "Where do you want to sync?"
+msgstr "Minkä sivuston kanssa haluat synkronoida?"
+
+#: build/admin.js:61
+msgid "Direction"
+msgstr "Suunta"
+
+#: build/admin.js:61
+msgid "Push to another site"
+msgstr "Lähetä toiselle sivustolle"
+
+#: build/admin.js:61
+msgid "Send content from this site to the other site."
+msgstr "Lähetä sisältöä tältä sivustolta toiselle sivustolle."
+
+#: build/admin.js:61
+msgid "Pull from another site"
+msgstr "Hae toiselta sivustolta"
+
+#: build/admin.js:61
+msgid "Bring content from the other site to this site."
+msgstr "Tuo sisältöä toiselta sivustolta tälle sivustolle."
+
+#: build/admin.js:61
+msgid "None of the connected sites allows this site to push to it."
+msgstr "Mikään yhdistetyistä sivustoista ei salli tämän sivuston lähettää sille sisältöä."
+
+#: build/admin.js:61
+msgid "None of the connected sites allows this site to pull from it."
+msgstr "Mikään yhdistetyistä sivustoista ei salli tämän sivuston hakea siltä sisältöä."
+
+#: build/admin.js:61
+msgid "Push to"
+msgstr "Lähetä sivustolle"
+
+#: build/admin.js:61
+msgid "Pull from"
+msgstr "Hae sivustolta"
+
+#. translators: %s: error message.
+#: build/admin.js:62
+#, js-format
+msgid "The last attempt to reach this site failed: %s You can still try."
+msgstr "Viimeisin yritys tavoittaa tämä sivusto epäonnistui: %s Voit silti yrittää."
+
+#: build/admin.js:62
+msgid "Next: choose content"
+msgstr "Seuraavaksi: valitse sisältö"
+
+#: build/admin.js:62
+msgid "This site is not connected to any other site yet. Connect the sites first, then come back here."
+msgstr "Tätä sivustoa ei ole vielä yhdistetty mihinkään toiseen sivustoon. Yhdistä sivustot ensin ja palaa sitten tänne."
+
+#: build/admin.js:62
+msgid "Go to Connections"
+msgstr "Siirry Yhteydet-välilehdelle"
+
+#: build/admin.js:62
+msgid "Ask an administrator to connect the sites."
+msgstr "Pyydä ylläpitäjää yhdistämään sivustot."
+
+#. translators: %s: comma-separated site names.
+#: build/admin.js:63
+#, js-format
+msgid "Not listed, because they do not allow this site to push: %s"
+msgstr "Ei luettelossa, koska ne eivät salli tämän sivuston lähettää niille: %s"
+
+#. translators: %s: comma-separated site names.
+#: build/admin.js:64
+#, js-format
+msgid "Not listed, because they do not allow this site to pull: %s"
+msgstr "Ei luettelossa, koska ne eivät salli tämän sivuston hakea niiltä: %s"
+
+#: build/admin.js:64
+msgid "Connections"
+msgstr "Yhteydet"
+
+#: build/admin.js:64
+msgid "Copy posts, pages, media and menus between this site and your other WordPress sites."
+msgstr "Kopioi artikkeleita, sivuja, mediaa ja valikoita tämän sivuston ja muiden WordPress-sivustojesi välillä."
+
+#. translators: %s: site name.
+#: build/editor.js:2
+#, js-format
+msgid "Up to date on %s"
+msgstr "Ajan tasalla sivustolla %s"
+
+#: build/editor.js:2
+msgid "Changed here since the last push"
+msgstr "Muutettu täällä edellisen lähetyksen jälkeen"
+
+#. translators: %s: site name.
+#: build/editor.js:3
+#, js-format
+msgid "Edited on %s since the last push"
+msgstr "Muokattu sivustolla %s edellisen lähetyksen jälkeen"
+
+#. translators: %s: site name.
+#: build/editor.js:4
+#, js-format
+msgid "Changed here and on %s"
+msgstr "Muutettu täällä ja sivustolla %s"
+
+#. translators: %s: site name.
+#: build/editor.js:6
+#, js-format
+msgid "Not on %s yet"
+msgstr "Ei vielä sivustolla %s"
+
+#: build/editor.js:6
+msgid "Could not check this site."
+msgstr "Tätä sivustoa ei voitu tarkistaa."
+
+#: build/editor.js:6
+msgid "Could not load the sync status."
+msgstr "Synkronoinnin tilaa ei voitu ladata."
+
+#: build/editor.js:6
+msgid "No site to push to."
+msgstr "Ei sivustoa, jolle lähettää."
+
+#: build/editor.js:6
+msgid "Review and push"
+msgstr "Tarkista ja lähetä"
+
+#: build/editor.js:6
+msgid "Save your changes first. Only saved content is pushed."
+msgstr "Tallenna muutokset ensin. Vain tallennettu sisältö lähetetään."

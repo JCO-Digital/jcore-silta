@@ -1,0 +1,2000 @@
+# Copyright (C) 2026 J&Co Digital Oy
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: JCORE Silta\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/jcore-silta\n"
+"Last-Translator: J&Co Digital Oy\n"
+"Language-Team: Swedish (Sweden)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-13T11:41:39+00:00\n"
+"PO-Revision-Date: 2026-10-13 12:00+0000\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: jcore-silta\n"
+"Language: sv_SE\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Plugin Name of the plugin
+#: jcore-silta.php
+#: includes/admin/class-menu.php:65
+#: includes/admin/class-menu.php:66
+#: build/admin.js:64
+#: build/editor.js:6
+msgid "JCORE Silta"
+msgstr "JCORE Silta"
+
+#. Plugin URI of the plugin
+#: jcore-silta.php
+msgid "https://github.com/JCO-Digital/jcore-silta"
+msgstr "https://github.com/JCO-Digital/jcore-silta"
+
+#. Description of the plugin
+#: jcore-silta.php
+msgid "Syncs posts, custom fields, terms and media between WordPress sites, with search-replace and a diff mode for choosing what to sync."
+msgstr "Synkroniserar inlägg, anpassade fält, termer och media mellan WordPress-webbplatser, med sök och ersätt och ett läge för skillnader där du väljer vad som ska synkroniseras."
+
+#. Author of the plugin
+#: jcore-silta.php
+msgid "J&Co Digital Oy"
+msgstr "J&Co Digital Oy"
+
+#. Author URI of the plugin
+#: jcore-silta.php
+msgid "https://jco.fi"
+msgstr "https://jco.fi"
+
+#: includes/admin/class-list-actions.php:92
+#: includes/admin/class-list-actions.php:131
+msgid "Push with Silta"
+msgstr "Skicka med Silta"
+
+#. translators: %s: connected site's label.
+#: includes/admin/class-list-actions.php:115
+#, php-format
+msgid "Pull from %s"
+msgstr "Hämta från %s"
+
+#. translators: %s: address of the site the database came from.
+#: includes/admin/class-notices.php:52
+#, php-format
+msgid "JCORE Silta: this database was copied from %s, so Silta switched off the connections that came with it and gave this site a new identity."
+msgstr "JCORE Silta: den här databasen kopierades från %s, så Silta stängde av anslutningarna som följde med den och gav den här webbplatsen en ny identitet."
+
+#: includes/admin/class-notices.php:53
+msgid "another site"
+msgstr "en annan webbplats"
+
+#: includes/admin/class-notices.php:57
+msgid "Review the connections"
+msgstr "Granska anslutningarna"
+
+#: includes/class-plugin.php:155
+#: build/admin.js:26
+msgid "Open"
+msgstr "Öppna"
+
+#: includes/crypto/class-identity.php:89
+msgid "JCORE_SILTA_PRIVATE_KEY in wp-config.php is not a valid key. Remove it or replace it with the value from \"wp silta key export\"."
+msgstr "JCORE_SILTA_PRIVATE_KEY i wp-config.php är inte en giltig nyckel. Ta bort den eller ersätt den med värdet från ”wp silta key export”."
+
+#: includes/crypto/class-identity.php:111
+msgid "The key is defined in wp-config.php. Change it there."
+msgstr "Nyckeln är definierad i wp-config.php. Ändra den där."
+
+#: includes/crypto/class-identity.php:156
+msgid "This site has no usable signing key. Add the connection again."
+msgstr "Den här webbplatsen har ingen användbar signeringsnyckel. Lägg till anslutningen igen."
+
+#: includes/endpoint/class-local.php:134
+msgid "Not an attachment."
+msgstr "Inte en bilaga."
+
+#: includes/endpoint/class-local.php:160
+msgid "The import has no job ID."
+msgstr "Importen saknar jobb-ID."
+
+#: includes/endpoint/class-local.php:208
+msgid "This site has no record of that sync."
+msgstr "Den här webbplatsen har inga uppgifter om den synkroniseringen."
+
+#: includes/endpoint/class-local.php:211
+msgid "That sync came from another site."
+msgstr "Den synkroniseringen kom från en annan webbplats."
+
+#: includes/jobs/class-runner.php:104
+#: includes/remote/class-connections.php:172
+#: includes/remote/class-connections.php:229
+#: includes/rest/class-source-controller.php:128
+#: includes/rest/class-source-controller.php:148
+msgid "No such connection."
+msgstr "Anslutningen finns inte."
+
+#: includes/jobs/class-runner.php:107
+msgid "Choose push or pull."
+msgstr "Välj skicka eller hämta."
+
+#: includes/jobs/class-runner.php:123
+msgid "The other site does not allow this site to push to it."
+msgstr "Den andra webbplatsen tillåter inte att den här webbplatsen skickar till den."
+
+#: includes/jobs/class-runner.php:124
+msgid "The other site does not allow this site to pull from it."
+msgstr "Den andra webbplatsen tillåter inte att den här webbplatsen hämtar från den."
+
+#: includes/jobs/class-runner.php:135
+msgid "Select something to sync."
+msgstr "Välj något att synkronisera."
+
+#: includes/jobs/class-runner.php:176
+#: includes/rest/class-jobs-controller.php:241
+#: includes/rest/class-jobs-controller.php:263
+#: includes/rest/class-jobs-controller.php:324
+#: includes/rest/class-jobs-controller.php:367
+#: includes/rest/class-jobs-controller.php:490
+msgid "No such sync."
+msgstr "Synkroniseringen finns inte."
+
+#: includes/jobs/class-runner.php:181
+msgid "The connection this sync used has been removed."
+msgstr "Anslutningen som den här synkroniseringen använde har tagits bort."
+
+#: includes/jobs/class-runner.php:285
+#: includes/jobs/class-runner.php:313
+#: includes/rest/class-jobs-controller.php:435
+msgid "No such item."
+msgstr "Objektet finns inte."
+
+#: includes/jobs/class-runner.php:334
+msgid "The sync is not ready to run."
+msgstr "Synkroniseringen är inte redo att köras."
+
+#: includes/jobs/class-runner.php:394
+msgid "Only syncs that have written something can be undone."
+msgstr "Bara synkroniseringar som har skrivit något kan ångras."
+
+#: includes/jobs/class-runner.php:554
+msgid "It no longer exists on the source site."
+msgstr "Det finns inte längre på källwebbplatsen."
+
+#: includes/jobs/class-runner.php:937
+msgid "The target did not report on this item."
+msgstr "Målwebbplatsen rapporterade inget om det här objektet."
+
+#: includes/remote/class-client.php:57
+msgid "This connection came with a copied database. Pair the sites again."
+msgstr "Den här anslutningen följde med en kopierad databas. Parkoppla webbplatserna igen."
+
+#: includes/remote/class-client.php:60
+msgid "This site's key has changed since the connection was made. Pair the sites again."
+msgstr "Den här webbplatsens nyckel har ändrats sedan anslutningen skapades. Parkoppla webbplatserna igen."
+
+#. translators: %s: error message from the HTTP client.
+#: includes/remote/class-client.php:157
+#, php-format
+msgid "The remote site could not be reached: %s"
+msgstr "Det gick inte att nå fjärrwebbplatsen: %s"
+
+#. translators: %s: URL the remote redirected to.
+#: includes/remote/class-client.php:171
+#, php-format
+msgid "The remote site redirected the request to %s. Pair the sites again using that address."
+msgstr "Fjärrwebbplatsen omdirigerade begäran till %s. Parkoppla webbplatserna igen med den adressen."
+
+#. translators: %d: HTTP status code.
+#: includes/remote/class-client.php:182
+#, php-format
+msgid "The remote site answered with something other than Silta data (HTTP %d). Check that the plugin is active there and that nothing blocks its REST API."
+msgstr "Fjärrwebbplatsen svarade med något annat än Silta-data (HTTP %d). Kontrollera att tillägget är aktivt där och att inget blockerar dess REST API."
+
+#: includes/remote/class-client.php:191
+msgid "The remote site returned an error."
+msgstr "Fjärrwebbplatsen returnerade ett fel."
+
+#: includes/remote/class-connections.php:90
+msgid "This pairing string was created on this site. Paste it on the other site."
+msgstr "Den här parkopplingskoden skapades på den här webbplatsen. Klistra in den på den andra webbplatsen."
+
+#: includes/remote/class-connections.php:116
+msgid "The remote site answered with a different identity than the pairing string promised."
+msgstr "Fjärrwebbplatsen svarade med en annan identitet än parkopplingskoden utlovade."
+
+#. translators: 1: remote protocol version, 2: local protocol version.
+#: includes/remote/class-connections.php:252
+#, php-format
+msgid "The remote runs an incompatible version of Silta (protocol %1$d, this site %2$d). Update the plugin on both sites."
+msgstr "Fjärrwebbplatsen kör en inkompatibel version av Silta (protokoll %1$d, den här webbplatsen %2$d). Uppdatera tillägget på båda webbplatserna."
+
+#: includes/remote/class-connections.php:343
+msgid "That is not a valid pairing string. Copy it again from the other site."
+msgstr "Det är inte en giltig parkopplingskod. Kopiera den igen från den andra webbplatsen."
+
+#: includes/remote/class-connections.php:361
+msgid "The other site does not use HTTPS. Silta only connects to sites over HTTPS, except in local and development environments."
+msgstr "Den andra webbplatsen använder inte HTTPS. Silta ansluter bara till webbplatser via HTTPS, utom i lokala miljöer och utvecklingsmiljöer."
+
+#: includes/remote/class-trusted-keys.php:95
+msgid "This pairing string is not valid or has already been used."
+msgstr "Den här parkopplingskoden är ogiltig eller har redan använts."
+
+#: includes/remote/class-trusted-keys.php:104
+msgid "This pairing string has expired. Create a new one."
+msgstr "Den här parkopplingskoden har gått ut. Skapa en ny."
+
+#: includes/remote/class-trusted-keys.php:109
+msgid "The public key is not valid."
+msgstr "Den publika nyckeln är ogiltig."
+
+#: includes/remote/class-trusted-keys.php:114
+msgid "The site ID is not valid."
+msgstr "Webbplats-ID:t är ogiltigt."
+
+#: includes/remote/class-trusted-keys.php:220
+msgid "No such site."
+msgstr "Webbplatsen finns inte."
+
+#: includes/remote/class-verifier.php:105
+msgid "This site does not recognise the calling site. Pair the sites again."
+msgstr "Den här webbplatsen känner inte igen den anropande webbplatsen. Parkoppla webbplatserna igen."
+
+#: includes/remote/class-verifier.php:112
+msgid "The request is too old, or the two servers' clocks disagree by more than five minutes."
+msgstr "Begäran är för gammal, eller så skiljer sig de två servrarnas klockor åt med mer än fem minuter."
+
+#: includes/remote/class-verifier.php:128
+msgid "This request has already been received."
+msgstr "Den här begäran har redan tagits emot."
+
+#: includes/remote/class-verifier.php:136
+msgid "The remote site was copied from another site, so its connections are switched off. An admin there has to re-enable this site, or you pair again."
+msgstr "Fjärrwebbplatsen kopierades från en annan webbplats, så dess anslutningar är avstängda. En administratör där måste aktivera den här webbplatsen igen, annars får du parkoppla igen."
+
+#: includes/remote/class-verifier.php:137
+msgid "An admin on the remote site has switched off this connection."
+msgstr "En administratör på fjärrwebbplatsen har stängt av den här anslutningen."
+
+#: includes/remote/class-verifier.php:146
+msgid "The remote site does not allow this site to write to it."
+msgstr "Fjärrwebbplatsen tillåter inte att den här webbplatsen skriver till den."
+
+#: includes/remote/class-verifier.php:147
+msgid "The remote site does not allow this site to read from it."
+msgstr "Fjärrwebbplatsen tillåter inte att den här webbplatsen läser från den."
+
+#: includes/remote/class-verifier.php:154
+msgid "The admin who allowed this connection on the remote site no longer has the rights to do so. Pair the sites again."
+msgstr "Administratören som tillät den här anslutningen på fjärrwebbplatsen har inte längre behörighet till det. Parkoppla webbplatserna igen."
+
+#: includes/remote/class-verifier.php:179
+msgid "The pairing request could not be verified."
+msgstr "Parkopplingsbegäran kunde inte verifieras."
+
+#: includes/rest/class-connections-controller.php:281
+msgid "Allow reading, writing or both."
+msgstr "Tillåt läsning, skrivning eller båda."
+
+#: includes/rest/class-connections-controller.php:345
+msgid "This site has no key yet. It gets one when it first connects to another site."
+msgstr "Den här webbplatsen har ingen nyckel än. Den får en när den första gången ansluter till en annan webbplats."
+
+#: includes/rest/class-jobs-controller.php:266
+msgid "A sync that has written something stays in the history."
+msgstr "En synkronisering som har skrivit något finns kvar i historiken."
+
+#: includes/rest/class-jobs-controller.php:327
+msgid "This sync has already been undone."
+msgstr "Den här synkroniseringen har redan ångrats."
+
+#: includes/rest/class-jobs-controller.php:493
+msgid "This sync has already started; its selection can no longer change."
+msgstr "Den här synkroniseringen har redan startat, så urvalet kan inte längre ändras."
+
+#: includes/rest/class-remote-controller.php:118
+msgid "The request was not verified."
+msgstr "Begäran verifierades inte."
+
+#: includes/rest/class-status-controller.php:60
+msgid "This post cannot be synced."
+msgstr "Det här inlägget kan inte synkroniseras."
+
+#: includes/sync/class-differ.php:142
+msgid "Description"
+msgstr "Beskrivning"
+
+#: includes/sync/class-differ.php:142
+#: build/admin.js:32
+#: build/admin.js:57
+msgid "Content"
+msgstr "Innehåll"
+
+#: includes/sync/class-differ.php:152
+#: build/admin.js:32
+msgid "Featured image"
+msgstr "Utvald bild"
+
+#: includes/sync/class-differ.php:194
+msgid "Language and translations"
+msgstr "Språk och översättningar"
+
+#: includes/sync/class-differ.php:204
+#: build/admin.js:32
+msgid "File"
+msgstr "Fil"
+
+#: includes/sync/class-differ.php:245
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "Name"
+msgstr "Namn"
+
+#: includes/sync/class-differ.php:252
+msgid "Items"
+msgstr "Objekt"
+
+#: includes/sync/class-differ.php:259
+msgid "Locations"
+msgstr "Platser"
+
+#: includes/sync/class-differ.php:315
+msgid "Title"
+msgstr "Rubrik"
+
+#: includes/sync/class-differ.php:316
+msgid "Slug"
+msgstr "Slug"
+
+#: includes/sync/class-differ.php:317
+msgid "Caption"
+msgstr "Bildtext"
+
+#: includes/sync/class-differ.php:317
+msgid "Excerpt"
+msgstr "Utdrag"
+
+#: includes/sync/class-differ.php:318
+#: build/admin.js:26
+msgid "Status"
+msgstr "Status"
+
+#: includes/sync/class-differ.php:319
+#: build/admin.js:26
+msgid "Date"
+msgstr "Datum"
+
+#: includes/sync/class-differ.php:320
+msgid "Author"
+msgstr "Författare"
+
+#: includes/sync/class-differ.php:321
+msgid "Attached to"
+msgstr "Bifogad till"
+
+#: includes/sync/class-differ.php:321
+msgid "Parent"
+msgstr "Förälder"
+
+#: includes/sync/class-differ.php:322
+msgid "Order"
+msgstr "Ordning"
+
+#: includes/sync/class-differ.php:323
+msgid "Comments"
+msgstr "Kommentarer"
+
+#: includes/sync/class-differ.php:324
+msgid "Pingbacks"
+msgstr "Pingbacks"
+
+#: includes/sync/class-differ.php:325
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "Password"
+msgstr "Lösenord"
+
+#: includes/sync/class-differ.php:326
+msgid "Template"
+msgstr "Mall"
+
+#: includes/sync/class-differ.php:327
+msgid "Format"
+msgstr "Format"
+
+#: includes/sync/class-differ.php:328
+msgid "Sticky"
+msgstr "Klistrad"
+
+#: includes/sync/class-differ.php:360
+msgid "Yes"
+msgstr "Ja"
+
+#: includes/sync/class-differ.php:360
+msgid "No"
+msgstr "Nej"
+
+#: includes/sync/class-importer.php:72
+msgid "Unknown object type."
+msgstr "Okänd objekttyp."
+
+#: includes/sync/class-importer.php:386
+#: includes/sync/class-importer.php:429
+msgid "The attachment's file was not transferred."
+msgstr "Bilagans fil överfördes inte."
+
+#: includes/sync/class-importer.php:649
+msgid "Only posts synced from the other site can be trashed by a sync."
+msgstr "En synkronisering kan bara flytta inlägg som har synkroniserats från den andra webbplatsen till papperskorgen."
+
+#: includes/sync/class-media.php:101
+msgid "The file does not belong to this attachment."
+msgstr "Filen hör inte till den här bilagan."
+
+#: includes/sync/class-media.php:107
+msgid "The file could not be read."
+msgstr "Filen kunde inte läsas."
+
+#: includes/sync/class-media.php:133
+msgid "The attachment has no file."
+msgstr "Bilagan har ingen fil."
+
+#: includes/sync/class-media.php:141
+#: includes/sync/class-media.php:154
+msgid "The attachment has an invalid file path."
+msgstr "Bilagan har en ogiltig filsökväg."
+
+#: includes/sync/class-media.php:198
+#: includes/sync/class-media.php:317
+msgid "The uploads folder is not writable."
+msgstr "Det går inte att skriva till uppladdningsmappen."
+
+#: includes/sync/class-media.php:249
+msgid "The transfer does not expect this file."
+msgstr "Överföringen förväntar sig inte den här filen."
+
+#: includes/sync/class-media.php:264
+msgid "The file chunk is invalid."
+msgstr "Fildelen är ogiltig."
+
+#: includes/sync/class-media.php:275
+msgid "A file arrived damaged. Run the sync again."
+msgstr "En fil kom fram skadad. Kör synkroniseringen igen."
+
+#: includes/sync/class-media.php:312
+msgid "Not every file of the attachment has arrived."
+msgstr "Alla bilagans filer har inte kommit fram."
+
+#: includes/sync/class-media.php:320
+msgid "Another file appeared at the attachment's path during the sync. Run the sync again."
+msgstr "En annan fil dök upp på bilagans sökväg under synkroniseringen. Kör synkroniseringen igen."
+
+#: includes/sync/class-media.php:323
+msgid "A file could not be moved into the uploads folder."
+msgstr "En fil kunde inte flyttas till uppladdningsmappen."
+
+#: includes/sync/class-media.php:452
+#: includes/sync/class-media.php:458
+msgid "Unknown file transfer."
+msgstr "Okänd filöverföring."
+
+#. translators: %s: menu item title.
+#: includes/sync/class-menus.php:199
+#, php-format
+msgid "Menu item \"%s\" was left out: the page or term it links to is not on this site."
+msgstr "Menyobjektet ”%s” utelämnades: sidan eller termen som det länkar till finns inte på den här webbplatsen."
+
+#. translators: %s: menu location slug.
+#: includes/sync/class-menus.php:293
+#, php-format
+msgid "The theme here has no menu location \"%s\"."
+msgstr "Temat här har ingen menyplats ”%s”."
+
+#. translators: %s: post type name.
+#: includes/sync/class-preflight.php:48
+#, php-format
+msgid "This site has no post type \"%s\"."
+msgstr "Den här webbplatsen har ingen inläggstyp ”%s”."
+
+#. translators: %s: taxonomy name.
+#: includes/sync/class-preflight.php:59
+#: includes/sync/class-preflight.php:95
+#, php-format
+msgid "This site has no taxonomy \"%s\"."
+msgstr "Den här webbplatsen har ingen taxonomi ”%s”."
+
+#: includes/sync/class-preflight.php:70
+msgid "Polylang is not active on this site."
+msgstr "Polylang är inte aktivt på den här webbplatsen."
+
+#. translators: %s: language code.
+#: includes/sync/class-preflight.php:74
+#, php-format
+msgid "This site has no language \"%s\"."
+msgstr "Den här webbplatsen har inget språk ”%s”."
+
+#: includes/sync/class-preflight.php:131
+msgid "ACF is not active on this site."
+msgstr "ACF är inte aktivt på den här webbplatsen."
+
+#. translators: %s: ACF field key.
+#: includes/sync/class-preflight.php:135
+#, php-format
+msgid "This site has no ACF field %s. Sync the field group first."
+msgstr "Den här webbplatsen har inget ACF-fält %s. Synkronisera fältgruppen först."
+
+#: build/admin.js:1
+msgid "Something went wrong. Please try again."
+msgstr "Något gick fel. Försök igen."
+
+#: build/admin.js:1
+msgid "Being prepared"
+msgstr "Förbereds"
+
+#: build/admin.js:1
+msgid "Ready to run"
+msgstr "Redo att köras"
+
+#: build/admin.js:1
+msgid "Not finished"
+msgstr "Inte klar"
+
+#: build/admin.js:1
+#: build/admin.js:12
+msgid "Done"
+msgstr "Klar"
+
+#: build/admin.js:1
+msgid "Undone"
+msgstr "Ångrad"
+
+#: build/admin.js:1
+msgid "Stopped"
+msgstr "Stoppad"
+
+#: build/admin.js:1
+msgid "Received"
+msgstr "Mottagen"
+
+#: build/admin.js:1
+msgid "Failed"
+msgstr "Misslyckades"
+
+#: build/admin.js:1
+msgid "Create"
+msgstr "Skapas"
+
+#: build/admin.js:1
+msgid "Update"
+msgstr "Uppdateras"
+
+#: build/admin.js:1
+msgid "No changes"
+msgstr "Inga ändringar"
+
+#: build/admin.js:1
+msgid "Already there"
+msgstr "Finns redan"
+
+#: build/admin.js:1
+msgid "Problem"
+msgstr "Problem"
+
+#: build/admin.js:1
+msgid "Trash"
+msgstr "Till papperskorgen"
+
+#: build/admin.js:1
+msgid "Waiting"
+msgstr "Väntar"
+
+#. translators: %d: number of items.
+#: build/admin.js:2
+#, js-format
+msgid "%d created"
+msgid_plural "%d created"
+msgstr[0] "%d skapad"
+msgstr[1] "%d skapade"
+
+#. translators: %d: number of items.
+#: build/admin.js:3
+#, js-format
+msgid "%d updated"
+msgid_plural "%d updated"
+msgstr[0] "%d uppdaterad"
+msgstr[1] "%d uppdaterade"
+
+#. translators: %d: number of items.
+#: build/admin.js:4
+#, js-format
+msgid "%d unchanged"
+msgid_plural "%d unchanged"
+msgstr[0] "%d oförändrad"
+msgstr[1] "%d oförändrade"
+
+#. translators: %d: number of items.
+#: build/admin.js:5
+#, js-format
+msgid "%d already there"
+msgid_plural "%d already there"
+msgstr[0] "%d fanns redan"
+msgstr[1] "%d fanns redan"
+
+#. translators: %d: number of items.
+#: build/admin.js:6
+#, js-format
+msgid "%d moved to the trash"
+msgid_plural "%d moved to the trash"
+msgstr[0] "%d flyttad till papperskorgen"
+msgstr[1] "%d flyttade till papperskorgen"
+
+#. translators: %d: number of items.
+#: build/admin.js:7
+#, js-format
+msgid "%d skipped"
+msgid_plural "%d skipped"
+msgstr[0] "%d överhoppad"
+msgstr[1] "%d överhoppade"
+
+#. translators: %d: number of items.
+#: build/admin.js:8
+#, js-format
+msgid "%d failed"
+msgid_plural "%d failed"
+msgstr[0] "%d misslyckades"
+msgstr[1] "%d misslyckades"
+
+#. translators: %d: number of items.
+#: build/admin.js:9
+#, js-format
+msgid "%d not written"
+msgid_plural "%d not written"
+msgstr[0] "%d skrevs inte"
+msgstr[1] "%d skrevs inte"
+
+#: build/admin.js:9
+msgid "This connection came with a copied database and is switched off. Pair the sites again."
+msgstr "Den här anslutningen följde med en kopierad databas och är avstängd. Parkoppla webbplatserna igen."
+
+#: build/admin.js:9
+msgid "This site's key has changed, so the other site no longer recognises it. Pair the sites again."
+msgstr "Den här webbplatsens nyckel har ändrats, så den andra webbplatsen känner inte längre igen den. Parkoppla webbplatserna igen."
+
+#: build/admin.js:9
+msgid "The last attempt to reach this site failed."
+msgstr "Det senaste försöket att nå den här webbplatsen misslyckades."
+
+#: build/admin.js:9
+msgid "Post"
+msgstr "Inlägg"
+
+#: build/admin.js:9
+msgid "Page"
+msgstr "Sida"
+
+#: build/admin.js:9
+msgid "Media"
+msgstr "Media"
+
+#: build/admin.js:9
+msgid "Pattern"
+msgstr "Mönster"
+
+#: build/admin.js:9
+#: build/admin.js:34
+#: build/admin.js:54
+msgid "Menu"
+msgstr "Meny"
+
+#: build/admin.js:9
+msgid "Category"
+msgstr "Kategori"
+
+#: build/admin.js:9
+msgid "Tag"
+msgstr "Etikett"
+
+#: build/admin.js:9
+#: build/admin.js:12
+#: build/admin.js:17
+#: build/admin.js:32
+#: build/admin.js:34
+msgid "Cancel"
+msgstr "Avbryt"
+
+#: build/admin.js:9
+msgid "Copied"
+msgstr "Kopierad"
+
+#: build/admin.js:9
+msgid "Copy"
+msgstr "Kopiera"
+
+#: build/admin.js:9
+msgid "Sites allowed to connect here"
+msgstr "Webbplatser som får ansluta hit"
+
+#: build/admin.js:9
+msgid "These sites can pull content from this site or push content to it. They act as the administrator who allowed them."
+msgstr "De här webbplatserna kan hämta innehåll från den här webbplatsen eller skicka innehåll hit. De agerar som administratören som tillät dem."
+
+#: build/admin.js:9
+msgid "No sites yet."
+msgstr "Inga webbplatser än."
+
+#: build/admin.js:9
+msgid "Allow at least one of the two, or revoke the site instead."
+msgstr "Tillåt minst ett av de två, eller återkalla webbplatsens åtkomst i stället."
+
+#: build/admin.js:9
+msgid "Switched off: came with a copied database"
+msgstr "Avstängd: följde med en kopierad databas"
+
+#. translators: 1: user name, 2: relative time.
+#: build/admin.js:10
+#, js-format
+msgid "Acts as %1$s. Last used: %2$s"
+msgstr "Agerar som %1$s. Senast använd: %2$s"
+
+#: build/admin.js:10
+msgid "(a deleted user)"
+msgstr "(en borttagen användare)"
+
+#: build/admin.js:10
+msgid "never"
+msgstr "aldrig"
+
+#: build/admin.js:10
+#: build/admin.js:12
+msgid "Can pull from this site"
+msgstr "Får hämta från den här webbplatsen"
+
+#: build/admin.js:10
+#: build/admin.js:12
+msgid "Can push to this site"
+msgstr "Får skicka till den här webbplatsen"
+
+#: build/admin.js:10
+msgid "Enabled"
+msgstr "Aktiverad"
+
+#: build/admin.js:10
+msgid "Revoke"
+msgstr "Återkalla"
+
+#: build/admin.js:10
+msgid "Revoke this site?"
+msgstr "Återkalla åtkomsten för den här webbplatsen?"
+
+#. translators: %s: site name.
+#: build/admin.js:11
+#, js-format
+msgid "%s can no longer connect to this site. Syncs it already made stay as they are."
+msgstr "%s kan inte längre ansluta till den här webbplatsen. Synkroniseringar som den redan har gjort lämnas som de är."
+
+#: build/admin.js:11
+msgid "Waiting to be used"
+msgstr "Väntar på att användas"
+
+#: build/admin.js:11
+msgid "Unnamed"
+msgstr "Namnlös"
+
+#. translators: %s: date and time.
+#: build/admin.js:12
+#, js-format
+msgid "valid until %s"
+msgstr "giltig till %s"
+
+#: build/admin.js:12
+msgid "Allow a site to connect"
+msgstr "Tillåt en webbplats att ansluta"
+
+#: build/admin.js:12
+msgid "This creates a pairing string. Paste it on the other site under Tools → JCORE Silta → Connections → Add a connection."
+msgstr "Det här skapar en parkopplingskod. Klistra in den på den andra webbplatsen under Verktyg → JCORE Silta → Anslutningar → Lägg till en anslutning."
+
+#: build/admin.js:12
+#: build/admin.js:18
+msgid "Pairing string"
+msgstr "Parkopplingskod"
+
+#: build/admin.js:12
+msgid "Paste this on the other site within 30 minutes. It works once."
+msgstr "Klistra in den här på den andra webbplatsen inom 30 minuter. Den fungerar en gång."
+
+#: build/admin.js:12
+msgid "Name of the other site"
+msgstr "Den andra webbplatsens namn"
+
+#: build/admin.js:12
+msgid "For example “Staging”."
+msgstr "Till exempel ”Staging”."
+
+#: build/admin.js:12
+msgid "It can read content from here."
+msgstr "Den kan läsa innehåll härifrån."
+
+#: build/admin.js:12
+msgid "It can create and change content here, as you."
+msgstr "Den kan skapa och ändra innehåll här, som du."
+
+#: build/admin.js:12
+msgid "Create a pairing string"
+msgstr "Skapa en parkopplingskod"
+
+#: build/admin.js:12
+msgid "Choose what the other site may do first."
+msgstr "Välj först vad den andra webbplatsen får göra."
+
+#. translators: %d: rule number.
+#: build/admin.js:13
+#, js-format
+msgid "Find (rule %d)"
+msgstr "Sök (regel %d)"
+
+#. translators: %d: rule number.
+#: build/admin.js:14
+#, js-format
+msgid "Replace with (rule %d)"
+msgstr "Ersätt med (regel %d)"
+
+#: build/admin.js:14
+#: build/admin.js:15
+#: build/admin.js:55
+msgid "Remove"
+msgstr "Ta bort"
+
+#: build/admin.js:14
+msgid "Add a rule"
+msgstr "Lägg till en regel"
+
+#: build/admin.js:14
+msgid "Sites this site connects to"
+msgstr "Webbplatser som den här webbplatsen ansluter till"
+
+#: build/admin.js:14
+msgid "From this site you can push to or pull from these sites, as far as they allow it."
+msgstr "Från den här webbplatsen kan du skicka till eller hämta från de här webbplatserna, i den mån de tillåter det."
+
+#: build/admin.js:14
+msgid "No connections yet."
+msgstr "Inga anslutningar än."
+
+#: build/admin.js:14
+msgid "Can push"
+msgstr "Får skicka"
+
+#: build/admin.js:14
+msgid "Can pull"
+msgstr "Får hämta"
+
+#: build/admin.js:14
+#: build/admin.js:24
+msgid "Needs attention"
+msgstr "Behöver åtgärdas"
+
+#: build/admin.js:14
+msgid "Working"
+msgstr "Fungerar"
+
+#: build/admin.js:14
+#: build/admin.js:17
+msgid "Basic auth"
+msgstr "Basic auth"
+
+#. translators: %s: relative time, e.g. "5 mins".
+#: build/admin.js:15
+#, js-format
+msgid "Last checked: %s"
+msgstr "Senast kontrollerad: %s"
+
+#: build/admin.js:15
+msgid "Check"
+msgstr "Kontrollera"
+
+#: build/admin.js:15
+msgid "Edit"
+msgstr "Redigera"
+
+#: build/admin.js:15
+msgid "Remove this connection?"
+msgstr "Ta bort den här anslutningen?"
+
+#. translators: %s: site name.
+#: build/admin.js:16
+#, js-format
+msgid "This site can no longer sync with %s. To connect again, you need a new pairing string from that site. Consider revoking this site there as well."
+msgstr "Den här webbplatsen kan inte längre synkronisera med %s. För att ansluta igen behöver du en ny parkopplingskod från den webbplatsen. Överväg att återkalla den här webbplatsens åtkomst där också."
+
+#. translators: %s: site name.
+#: build/admin.js:17
+#, js-format
+msgid "Edit %s"
+msgstr "Redigera %s"
+
+#: build/admin.js:17
+msgid "Only needed when the other site is behind a password. Leave the user empty to remove it."
+msgstr "Behövs bara när den andra webbplatsen är lösenordsskyddad. Lämna användaren tom för att ta bort det."
+
+#: build/admin.js:17
+#: build/admin.js:18
+msgid "User"
+msgstr "Användare"
+
+#: build/admin.js:17
+msgid "Leave empty to keep the saved password."
+msgstr "Lämna tomt för att behålla det sparade lösenordet."
+
+#: build/admin.js:17
+msgid "Saved search and replace rules"
+msgstr "Sparade regler för sök och ersätt"
+
+#: build/admin.js:17
+msgid "Used for every sync with this site, on top of the automatic address replacement. You can still change them for each sync."
+msgstr "Används vid varje synkronisering med den här webbplatsen, utöver det automatiska adressbytet. Du kan fortfarande ändra dem för varje synkronisering."
+
+#: build/admin.js:17
+#: build/admin.js:29
+msgid "Save"
+msgstr "Spara"
+
+#: build/admin.js:17
+msgid "Add a connection"
+msgstr "Lägg till en anslutning"
+
+#: build/admin.js:17
+msgid "On the other site, open Tools → JCORE Silta → Connections and choose “Allow a site to connect”. Paste the pairing string it shows here."
+msgstr "Öppna Verktyg → JCORE Silta → Anslutningar på den andra webbplatsen och välj ”Tillåt en webbplats att ansluta”. Klistra in parkopplingskoden som visas där här."
+
+#. translators: %s: site name.
+#: build/admin.js:18
+#, js-format
+msgid "Connected to %s."
+msgstr "Ansluten till %s."
+
+#: build/admin.js:18
+msgid "Name (optional)"
+msgstr "Namn (valfritt)"
+
+#: build/admin.js:18
+msgid "Defaults to the other site’s name."
+msgstr "Standard är den andra webbplatsens namn."
+
+#: build/admin.js:18
+msgid "The other site is behind a password (basic auth)"
+msgstr "Den andra webbplatsen är lösenordsskyddad (basic auth)"
+
+#: build/admin.js:18
+msgid "Connect"
+msgstr "Anslut"
+
+#: build/admin.js:18
+msgid "Stored in the database, encrypted with this site’s salts."
+msgstr "Lagrad i databasen, krypterad med den här webbplatsens salter."
+
+#: build/admin.js:18
+msgid "Defined in wp-config.php. To change it, edit it there."
+msgstr "Definierad i wp-config.php. Redigera den där för att ändra den."
+
+#: build/admin.js:18
+msgid "No key yet. It is created when this site first connects to another site."
+msgstr "Ingen nyckel än. Den skapas när den här webbplatsen första gången ansluter till en annan webbplats."
+
+#: build/admin.js:18
+msgid "This site"
+msgstr "Den här webbplatsen"
+
+#: build/admin.js:18
+msgid "Address"
+msgstr "Adress"
+
+#: build/admin.js:18
+msgid "Site ID"
+msgstr "Webbplats-ID"
+
+#: build/admin.js:18
+msgid "Key"
+msgstr "Nyckel"
+
+#: build/admin.js:18
+msgid "This site’s key can no longer be read (the salts in wp-config.php changed). Create a new key and pair your connections again."
+msgstr "Den här webbplatsens nyckel kan inte längre läsas (salterna i wp-config.php har ändrats). Skapa en ny nyckel och parkoppla dina anslutningar igen."
+
+#: build/admin.js:18
+msgid "This site’s salts are stored in the database instead of wp-config.php, so encrypting the key with them adds no protection. Move the key to wp-config.php."
+msgstr "Den här webbplatsens salter lagras i databasen i stället för i wp-config.php, så att kryptera nyckeln med dem ger inget skydd. Flytta nyckeln till wp-config.php."
+
+#: build/admin.js:18
+msgid "This site signs its requests to other sites with its key. The other sites only store the matching public key, so a copy of their database can’t be used to sync."
+msgstr "Den här webbplatsen signerar sina begäranden till andra webbplatser med sin nyckel. De andra webbplatserna lagrar bara den matchande publika nyckeln, så en kopia av deras databas kan inte användas för att synkronisera."
+
+#: build/admin.js:18
+msgid "Move the key to wp-config.php"
+msgstr "Flytta nyckeln till wp-config.php"
+
+#: build/admin.js:18
+msgid "Create a new key"
+msgstr "Skapa en ny nyckel"
+
+#: build/admin.js:18
+msgid "Copy this line. It is secret: anyone who has it can sync as this site."
+msgstr "Kopiera den här raden. Den är hemlig: alla som har den kan synkronisera som den här webbplatsen."
+
+#: build/admin.js:18
+msgid "Add it to wp-config.php, above the line “That’s all, stop editing!”."
+msgstr "Lägg till den i wp-config.php, ovanför raden ”That’s all, stop editing!”."
+
+#: build/admin.js:18
+msgid "Reload this page. Once the key is found in wp-config.php, the copy in the database is removed automatically."
+msgstr "Ladda om den här sidan. När nyckeln hittas i wp-config.php tas kopian i databasen bort automatiskt."
+
+#: build/admin.js:18
+msgid "Line for wp-config.php"
+msgstr "Rad för wp-config.php"
+
+#: build/admin.js:18
+msgid "Create a new key?"
+msgstr "Skapa en ny nyckel?"
+
+#: build/admin.js:18
+msgid "The other sites won’t recognise this site any more. Every connection on this site needs to be paired again."
+msgstr "De andra webbplatserna kommer inte längre att känna igen den här webbplatsen. Varje anslutning på den här webbplatsen måste parkopplas igen."
+
+#. translators: 1: previous site address, 2: date.
+#: build/admin.js:19
+#, js-format
+msgid "This site’s database was copied from %1$s (noticed %2$s). So the copy can’t act as that site, this site got a new identity, and the connections and allowed sites that came with the copy were switched off. Pair the sites you need again."
+msgstr "Den här webbplatsens databas kopierades från %1$s (upptäcktes %2$s). För att kopian inte ska kunna agera som den webbplatsen fick den här webbplatsen en ny identitet, och anslutningarna och de tillåtna webbplatserna som följde med kopian stängdes av. Parkoppla de webbplatser du behöver igen."
+
+#: build/admin.js:19
+msgid "another address"
+msgstr "en annan adress"
+
+#: build/admin.js:19
+msgid "Dismiss"
+msgstr "Avfärda"
+
+#: build/admin.js:19
+msgid "Previous"
+msgstr "Föregående"
+
+#. translators: 1: current page, 2: number of pages.
+#: build/admin.js:20
+#, js-format
+msgid "Page %1$d of %2$d"
+msgstr "Sida %1$d av %2$d"
+
+#: build/admin.js:20
+msgid "Next"
+msgstr "Nästa"
+
+#: build/admin.js:20
+msgid "Undo this sync"
+msgstr "Ångra den här synkroniseringen"
+
+#: build/admin.js:20
+msgid "Undo this sync?"
+msgstr "Ångra den här synkroniseringen?"
+
+#: build/admin.js:20
+msgid "Undo"
+msgstr "Ångra"
+
+#. translators: %s: site name.
+#: build/admin.js:21
+#, js-format
+msgid "Everything this sync changed on %s is put back as it was before: updated content is restored, new content is removed and trashed posts are restored. Changes made there after the sync are lost."
+msgstr "Allt som den här synkroniseringen ändrade på %s återställs till hur det var innan: uppdaterat innehåll återställs, nytt innehåll tas bort och inlägg i papperskorgen återställs. Ändringar som har gjorts där efter synkroniseringen går förlorade."
+
+#. translators: %s: status, e.g. Done.
+#: build/admin.js:22
+#, js-format
+msgid "Status: %s"
+msgstr "Status: %s"
+
+#: build/admin.js:22
+msgid "Start another sync"
+msgstr "Starta en ny synkronisering"
+
+#. translators: %s: site name.
+#: build/admin.js:23
+#: build/admin.js:27
+#, js-format
+msgid "Received from %s"
+msgstr "Mottagen från %s"
+
+#. translators: %s: target site name.
+#: build/admin.js:24
+#, js-format
+msgid "Synced to %s"
+msgstr "Synkroniserad till %s"
+
+#: build/admin.js:24
+msgid "This sync was undone"
+msgstr "Den här synkroniseringen ångrades"
+
+#: build/admin.js:24
+msgid "This sync was stopped"
+msgstr "Den här synkroniseringen stoppades"
+
+#. translators: %s: error message.
+#: build/admin.js:25
+#, js-format
+msgid "failed: %s"
+msgstr "misslyckades: %s"
+
+#: build/admin.js:25
+msgid "unknown error"
+msgstr "okänt fel"
+
+#: build/admin.js:25
+msgid "skipped: it was edited on the target and you did not choose to overwrite it."
+msgstr "överhoppad: den hade redigerats på målwebbplatsen och du valde inte att skriva över den."
+
+#: build/admin.js:25
+msgid "skipped: it was already gone."
+msgstr "överhoppad: den var redan borta."
+
+#: build/admin.js:25
+msgid "skipped."
+msgstr "överhoppad."
+
+#: build/admin.js:25
+msgid "synced with warnings:"
+msgstr "synkroniserad med varningar:"
+
+#. translators: 1: restored items, 2: removed items, 3: items taken out of the trash.
+#: build/admin.js:26
+#, js-format
+msgid "Undone: %1$d restored to how they were, %2$d created items removed, %3$d taken back out of the trash."
+msgstr "Ångrad: %1$d återställda till hur de var, %2$d skapade objekt borttagna, %3$d tillbakatagna från papperskorgen."
+
+#: build/admin.js:26
+#: build/admin.js:64
+msgid "History"
+msgstr "Historik"
+
+#: build/admin.js:26
+msgid "Syncs started here and syncs other sites pushed here. A sync can be undone while its snapshots are kept."
+msgstr "Synkroniseringar som har startats här och synkroniseringar som andra webbplatser har skickat hit. En synkronisering kan ångras så länge dess ögonblicksbilder sparas."
+
+#: build/admin.js:26
+msgid "No syncs yet."
+msgstr "Inga synkroniseringar än."
+
+#: build/admin.js:26
+#: build/admin.js:49
+msgid "What"
+msgstr "Vad"
+
+#: build/admin.js:26
+msgid "By"
+msgstr "Av"
+
+#: build/admin.js:26
+msgid "Result"
+msgstr "Resultat"
+
+#: build/admin.js:26
+msgid "Actions"
+msgstr "Åtgärder"
+
+#. translators: %s: site name.
+#: build/admin.js:28
+#, js-format
+msgid "Pushed to %s"
+msgstr "Skickad till %s"
+
+#. translators: %s: site name.
+#: build/admin.js:29
+#, js-format
+msgid "Pulled from %s"
+msgstr "Hämtad från %s"
+
+#: build/admin.js:29
+msgid "Items per request"
+msgstr "Objekt per begäran"
+
+#: build/admin.js:29
+msgid "How many posts are compared or written in one go. Lower it if requests time out."
+msgstr "Hur många inlägg som jämförs eller skrivs på en gång. Sänk värdet om begärandena når tidsgränsen."
+
+#: build/admin.js:29
+msgid "Media chunk size (KB)"
+msgstr "Storlek på mediedelar (kB)"
+
+#: build/admin.js:29
+msgid "Files are sent in pieces of this size. Lower it if the server limits request sizes."
+msgstr "Filer skickas i delar av den här storleken. Sänk värdet om servern begränsar storleken på begäranden."
+
+#: build/admin.js:29
+msgid "Keep undo snapshots for (days)"
+msgstr "Behåll ögonblicksbilder för ångra i (dagar)"
+
+#: build/admin.js:29
+msgid "After this, a sync can no longer be undone."
+msgstr "Därefter kan en synkronisering inte längre ångras."
+
+#: build/admin.js:29
+msgid "Time per request (seconds)"
+msgstr "Tid per begäran (sekunder)"
+
+#: build/admin.js:29
+msgid "How long the browser lets the server work before it reports progress. Keep it below the server’s time limit."
+msgstr "Hur länge webbläsaren låter servern arbeta innan den rapporterar förloppet. Håll värdet under serverns tidsgräns."
+
+#: build/admin.js:29
+#: build/admin.js:64
+msgid "Settings"
+msgstr "Inställningar"
+
+#: build/admin.js:29
+msgid "Settings saved."
+msgstr "Inställningarna har sparats."
+
+#: build/admin.js:29
+msgid "Never sync these meta keys"
+msgstr "Synkronisera aldrig de här metanycklarna"
+
+#: build/admin.js:29
+msgid "One per line. End a line with * to match every key that starts with it, e.g. _my_plugin_*."
+msgstr "En per rad. Avsluta en rad med * för att matcha alla nycklar som börjar med den, t.ex. _my_plugin_*."
+
+#. translators: 1: finished items, 2: all items.
+#: build/admin.js:30
+#, js-format
+msgid "%1$d of %2$d written"
+msgstr "%1$d av %2$d skrivna"
+
+#. translators: 1: finished items, 2: all items.
+#: build/admin.js:31
+#, js-format
+msgid "%1$d of %2$d compared"
+msgstr "%1$d av %2$d jämförda"
+
+#. translators: %s: target site name.
+#: build/admin.js:32
+#, js-format
+msgid "Syncing to %s"
+msgstr "Synkroniserar till %s"
+
+#: build/admin.js:32
+msgid "Preparing the sync"
+msgstr "Förbereder synkroniseringen"
+
+#: build/admin.js:32
+msgid "Collecting"
+msgstr "Samlar in"
+
+#: build/admin.js:32
+msgid "Comparing"
+msgstr "Jämför"
+
+#: build/admin.js:32
+msgid "Finding dependencies"
+msgstr "Söker beroenden"
+
+#: build/admin.js:32
+msgid "Checking for removed posts"
+msgstr "Söker efter borttagna inlägg"
+
+#: build/admin.js:32
+msgid "Ready"
+msgstr "Redo"
+
+#: build/admin.js:32
+msgid "Copying media files"
+msgstr "Kopierar mediefiler"
+
+#: build/admin.js:32
+msgid "Writing"
+msgstr "Skriver"
+
+#: build/admin.js:32
+msgid "Linking references"
+msgstr "Länkar referenser"
+
+#: build/admin.js:32
+msgid "Moving removed posts to the trash"
+msgstr "Flyttar borttagna inlägg till papperskorgen"
+
+#: build/admin.js:32
+msgid "Finished"
+msgstr "Klar"
+
+#: build/admin.js:32
+msgid "Keep this page open. If it closes, you can continue from History."
+msgstr "Håll den här sidan öppen. Om den stängs kan du fortsätta från Historik."
+
+#: build/admin.js:32
+msgid "Nothing is written yet. This compares every item with the target."
+msgstr "Inget har skrivits än. Det här jämför varje objekt med målwebbplatsen."
+
+#: build/admin.js:32
+msgid "Stop"
+msgstr "Stoppa"
+
+#: build/admin.js:32
+msgid "Retry"
+msgstr "Försök igen"
+
+#: build/admin.js:32
+msgid "Stop the sync?"
+msgstr "Stoppa synkroniseringen?"
+
+#: build/admin.js:32
+msgid "What has been written so far stays on the target. You can undo it from History."
+msgstr "Det som har skrivits hittills finns kvar på målwebbplatsen. Du kan ångra det från Historik."
+
+#: build/admin.js:32
+msgid "For every post, sync only"
+msgstr "Synkronisera endast följande för varje inlägg"
+
+#: build/admin.js:32
+msgid "Everything"
+msgstr "Allt"
+
+#: build/admin.js:32
+msgid "Fields (title, slug, status…)"
+msgstr "Fält (rubrik, slug, status…)"
+
+#: build/admin.js:32
+msgid "Custom fields"
+msgstr "Anpassade fält"
+
+#: build/admin.js:32
+msgid "Taxonomies"
+msgstr "Taxonomier"
+
+#: build/admin.js:32
+msgid "Language"
+msgstr "Språk"
+
+#: build/admin.js:32
+msgid "Apply to all"
+msgstr "Tillämpa på alla"
+
+#: build/admin.js:32
+msgid "Updates existing posts only in these parts; new posts are always created in full. You can still change the parts for each post below."
+msgstr "Uppdaterar befintliga inlägg endast i de här delarna; nya inlägg skapas alltid i sin helhet. Du kan fortfarande ändra delarna för varje inlägg nedan."
+
+#: build/admin.js:32
+msgid "Show unchanged parts"
+msgstr "Visa oförändrade delar"
+
+#: build/admin.js:32
+msgid "Fields"
+msgstr "Fält"
+
+#: build/admin.js:32
+msgid "Menu items"
+msgstr "Menyobjekt"
+
+#: build/admin.js:32
+msgid "Menu locations"
+msgstr "Menyplatser"
+
+#: build/admin.js:32
+msgid "Unchanged"
+msgstr "Oförändrad"
+
+#. translators: %s: target site name.
+#: build/admin.js:33
+#, js-format
+msgid "On %s now"
+msgstr "Nu på %s"
+
+#: build/admin.js:33
+msgid "After the sync"
+msgstr "Efter synkroniseringen"
+
+#: build/admin.js:33
+msgid "You chose to create a new copy."
+msgstr "Du valde att skapa en ny kopia."
+
+#. translators: %d: post ID on the target.
+#: build/admin.js:34
+#, js-format
+msgid "You chose target post #%d."
+msgstr "Du valde inlägg #%d på målwebbplatsen."
+
+#: build/admin.js:34
+msgid "Change the match"
+msgstr "Ändra matchningen"
+
+#: build/admin.js:34
+msgid "Create a new copy instead"
+msgstr "Skapa en ny kopia i stället"
+
+#: build/admin.js:34
+msgid "Use another target post ID…"
+msgstr "Använd ett annat inläggs-ID på målwebbplatsen…"
+
+#: build/admin.js:34
+msgid "Reset to the automatic match"
+msgstr "Återställ till den automatiska matchningen"
+
+#: build/admin.js:34
+msgid "Post ID on the target"
+msgstr "Inläggs-ID på målwebbplatsen"
+
+#: build/admin.js:34
+msgid "Use this post"
+msgstr "Använd det här inlägget"
+
+#. translators: 1: post title, 2: target site name.
+#: build/admin.js:35
+#, js-format
+msgid "Move “%1$s” to the trash on %2$s"
+msgstr "Flytta ”%1$s” till papperskorgen på %2$s"
+
+#. translators: %d: dependency level.
+#: build/admin.js:36
+#, js-format
+msgid "level %d"
+msgstr "nivå %d"
+
+#. translators: %d: post ID.
+#: build/admin.js:37
+#, js-format
+msgid "Post #%d on the target."
+msgstr "Inlägg #%d på målwebbplatsen."
+
+#. translators: %s: error message.
+#: build/admin.js:38
+#, js-format
+msgid "This item can’t be synced: %s"
+msgstr "Det här objektet kan inte synkroniseras: %s"
+
+#: build/admin.js:38
+msgid "New: everything will be created."
+msgstr "Nytt: allt kommer att skapas."
+
+#: build/admin.js:38
+msgid "Hide the changes"
+msgstr "Dölj ändringarna"
+
+#: build/admin.js:38
+msgid "Show the changes and choose parts"
+msgstr "Visa ändringarna och välj delar"
+
+#: build/admin.js:38
+msgid "Only the chosen parts will be synced."
+msgstr "Endast de valda delarna synkroniseras."
+
+#. translators: 1: title on the target, 2: ID on the target, 3: how it was matched, e.g. "the same slug".
+#: build/admin.js:39
+#, js-format
+msgid "Matches “%1$s” (#%2$d) by %3$s."
+msgstr "Matchar ”%1$s” (#%2$d), grund: %3$s."
+
+#: build/admin.js:39
+msgid "an earlier sync"
+msgstr "en tidigare synkronisering"
+
+#: build/admin.js:39
+msgid "where it originally came from"
+msgstr "ursprunglig källa"
+
+#: build/admin.js:39
+msgid "the same ID (GUID)"
+msgstr "samma ID (GUID)"
+
+#: build/admin.js:39
+msgid "the same file"
+msgstr "samma fil"
+
+#: build/admin.js:39
+msgid "the same slug"
+msgstr "samma slug"
+
+#: build/admin.js:39
+msgid "your choice"
+msgstr "ditt val"
+
+#: build/admin.js:39
+msgid "Edit on the target"
+msgstr "Redigera på målwebbplatsen"
+
+#: build/admin.js:39
+msgid "View on the target"
+msgstr "Visa på målwebbplatsen"
+
+#. translators: %s: target site name.
+#: build/admin.js:40
+#, js-format
+msgid "Changed on %s more recently than here."
+msgstr "Ändrad på %s senare än här."
+
+#. translators: %s: target site name.
+#: build/admin.js:41
+#, js-format
+msgid "Edited on %s since the last sync."
+msgstr "Redigerad på %s sedan den senaste synkroniseringen."
+
+#: build/admin.js:41
+msgid "It is skipped unless you overwrite it."
+msgstr "Den hoppas över om du inte skriver över den."
+
+#: build/admin.js:41
+msgid "Overwrite it"
+msgstr "Skriv över den"
+
+#. translators: 1: part of the post, e.g. "Categories", 2: why it can't be synced.
+#: build/admin.js:42
+#, js-format
+msgid "%1$s can’t be synced: %2$s"
+msgstr "%1$s kan inte synkroniseras: %2$s"
+
+#: build/admin.js:42
+msgid "Refers to content the target doesn’t have and this sync doesn’t include. The references will point to nothing:"
+msgstr "Refererar till innehåll som målwebbplatsen inte har och som den här synkroniseringen inte omfattar. Referenserna kommer inte att peka på något:"
+
+#: build/admin.js:42
+msgid "missing on the source too"
+msgstr "saknas även på källwebbplatsen"
+
+#. translators: 1: included items, 2: all items.
+#: build/admin.js:43
+#, js-format
+msgid "%1$d of %2$d included"
+msgstr "%1$d av %2$d inkluderade"
+
+#: build/admin.js:43
+msgid "Include all"
+msgstr "Inkludera alla"
+
+#: build/admin.js:43
+msgid "Include none"
+msgstr "Inkludera inga"
+
+#: build/admin.js:43
+msgid "Nothing here."
+msgstr "Inget här."
+
+#. translators: 1: items to show, 2: items not shown yet.
+#: build/admin.js:44
+#, js-format
+msgid "Show %1$d more (%2$d left)"
+msgid_plural "Show %1$d more (%2$d left)"
+msgstr[0] "Visa %1$d till (%2$d kvar)"
+msgstr[1] "Visa %1$d till (%2$d kvar)"
+
+#: build/admin.js:44
+#: build/admin.js:57
+msgid "Try again"
+msgstr "Försök igen"
+
+#: build/admin.js:44
+msgid "Review the changes"
+msgstr "Granska ändringarna"
+
+#: build/admin.js:44
+msgid "Overwrite them all"
+msgstr "Skriv över alla"
+
+#. translators: 1: number of posts, 2: target site name.
+#: build/admin.js:45
+#, js-format
+msgid "%1$d post was edited on %2$s since the last sync. It is skipped unless you choose to overwrite it."
+msgid_plural "%1$d posts were edited on %2$s since the last sync. They are skipped unless you choose to overwrite them."
+msgstr[0] "%1$d inlägg har redigerats på %2$s sedan den senaste synkroniseringen. Det hoppas över om du inte väljer att skriva över det."
+msgstr[1] "%1$d inlägg har redigerats på %2$s sedan den senaste synkroniseringen. De hoppas över om du inte väljer att skriva över dem."
+
+#: build/admin.js:45
+msgid "Add them too"
+msgstr "Lägg till dem också"
+
+#. translators: %d: number of items.
+#: build/admin.js:46
+#, js-format
+msgid "%d more item is referenced by the dependencies and is missing on the target."
+msgid_plural "%d more items are referenced by the dependencies and are missing on the target."
+msgstr[0] "Ytterligare %d objekt refereras av beroendena och saknas på målwebbplatsen."
+msgstr[1] "Ytterligare %d objekt refereras av beroendena och saknas på målwebbplatsen."
+
+#: build/admin.js:46
+#: build/admin.js:53
+msgid "Selected"
+msgstr "Valda"
+
+#: build/admin.js:46
+msgid "Dependencies"
+msgstr "Beroenden"
+
+#: build/admin.js:46
+msgid "Media, terms and posts the selected content refers to, which the target does not have yet."
+msgstr "Media, termer och inlägg som det valda innehållet refererar till och som målwebbplatsen inte har än."
+
+#: build/admin.js:46
+msgid "Removed on the source"
+msgstr "Borttagna på källwebbplatsen"
+
+#. translators: 1: target site name, 2: source site name.
+#: build/admin.js:47
+#, js-format
+msgid "These posts on %1$s came from %2$s in an earlier sync, but the originals no longer exist. Tick the ones to move to the trash. Nothing is deleted permanently."
+msgstr "De här inläggen på %1$s kom från %2$s i en tidigare synkronisering, men originalen finns inte längre. Markera de som ska flyttas till papperskorgen. Inget raderas permanent."
+
+#: build/admin.js:47
+msgid "Discard and change the options"
+msgstr "Förkasta och ändra alternativen"
+
+#: build/admin.js:47
+msgid "Run sync"
+msgstr "Kör synkronisering"
+
+#: build/admin.js:47
+msgid "Run the sync?"
+msgstr "Köra synkroniseringen?"
+
+#. translators: 1: number of items, 2: target site name.
+#: build/admin.js:48
+#, js-format
+msgid "Write %1$d item to %2$s? Everything changed is snapshotted and can be undone from History."
+msgid_plural "Write %1$d items to %2$s? Everything changed is snapshotted and can be undone from History."
+msgstr[0] "Skriva %1$d objekt till %2$s? Allt som ändras sparas i en ögonblicksbild och kan ångras från Historik."
+msgstr[1] "Skriva %1$d objekt till %2$s? Allt som ändras sparas i en ögonblicksbild och kan ångras från Historik."
+
+#. translators: %d: number of posts.
+#: build/admin.js:49
+#, js-format
+msgid "%d post with a conflict will be skipped."
+msgid_plural "%d posts with a conflict will be skipped."
+msgstr[0] "%d inlägg med en konflikt hoppas över."
+msgstr[1] "%d inlägg med konflikter hoppas över."
+
+#: build/admin.js:49
+msgid "to create"
+msgstr "skapas"
+
+#: build/admin.js:49
+msgid "to update"
+msgstr "uppdateras"
+
+#: build/admin.js:49
+msgid "unchanged"
+msgstr "oförändrade"
+
+#: build/admin.js:49
+msgid "conflicts"
+msgstr "konflikter"
+
+#: build/admin.js:49
+msgid "problems"
+msgstr "problem"
+
+#: build/admin.js:49
+msgid "to trash"
+msgstr "till papperskorgen"
+
+#: build/admin.js:49
+msgid "Where"
+msgstr "Vart"
+
+#: build/admin.js:49
+msgid "How"
+msgstr "Hur"
+
+#: build/admin.js:49
+msgid "Review"
+msgstr "Granskning"
+
+#: build/admin.js:49
+#: build/admin.js:64
+msgid "Sync"
+msgstr "Synkronisering"
+
+#: build/admin.js:49
+msgid "(done)"
+msgstr "(klar)"
+
+#: build/admin.js:49
+msgid "How should it be synced?"
+msgstr "Hur ska det synkroniseras?"
+
+#. translators: %s: target site name.
+#: build/admin.js:50
+#, js-format
+msgid "Status on %s"
+msgstr "Status på %s"
+
+#: build/admin.js:50
+msgid "Same as on the source"
+msgstr "Samma som på källwebbplatsen"
+
+#: build/admin.js:50
+msgid "A published post is published on the target too."
+msgstr "Ett publicerat inlägg publiceras även på målwebbplatsen."
+
+#: build/admin.js:50
+msgid "Always as a draft"
+msgstr "Alltid som utkast"
+
+#: build/admin.js:50
+msgid "Keep the target's status for existing posts"
+msgstr "Behåll målwebbplatsens status för befintliga inlägg"
+
+#: build/admin.js:50
+msgid "New posts get the status they have on the source."
+msgstr "Nya inlägg får den status de har på källwebbplatsen."
+
+#: build/admin.js:50
+msgid "Review each change and choose which parts to sync"
+msgstr "Granska varje ändring och välj vilka delar som ska synkroniseras"
+
+#: build/admin.js:50
+msgid "Shows the differences for every post, like the revisions screen, so you can leave out the parts you do not want."
+msgstr "Visar skillnaderna för varje inlägg, som versionsvyn, så att du kan utelämna de delar du inte vill ha."
+
+#: build/admin.js:50
+msgid "Include dependencies"
+msgstr "Inkludera beroenden"
+
+#: build/admin.js:50
+msgid "Also sync the media, terms and posts these refer to when the target doesn't have them."
+msgstr "Synkronisera även media, termer och inlägg som dessa refererar till när målwebbplatsen inte har dem."
+
+#: build/admin.js:50
+msgid "Search and replace"
+msgstr "Sök och ersätt"
+
+#. translators: 1: source site address, 2: target site address.
+#: build/admin.js:51
+#, js-format
+msgid "The site addresses are replaced automatically: %1$s → %2$s. Add rules for anything else that differs between the sites. Plain text, no patterns."
+msgstr "Webbplatsadresserna ersätts automatiskt: %1$s → %2$s. Lägg till regler för allt annat som skiljer sig mellan webbplatserna. Vanlig text, inga mönster."
+
+#: build/admin.js:51
+msgid "The site addresses are replaced automatically. Add rules for anything else that differs between the sites. Plain text, no patterns."
+msgstr "Webbplatsadresserna ersätts automatiskt. Lägg till regler för allt annat som skiljer sig mellan webbplatserna. Vanlig text, inga mönster."
+
+#: build/admin.js:51
+msgid "Save these rules for this connection"
+msgstr "Spara de här reglerna för den här anslutningen"
+
+#: build/admin.js:51
+#: build/admin.js:57
+msgid "Back"
+msgstr "Tillbaka"
+
+#: build/admin.js:51
+msgid "Prepare"
+msgstr "Förbered"
+
+#: build/admin.js:51
+msgid "Preparing compares the content with the target. Nothing is written yet."
+msgstr "Förberedelsen jämför innehållet med målwebbplatsen. Inget skrivs än."
+
+#. translators: %s: post type name, e.g. Pages.
+#: build/admin.js:52
+#, js-format
+msgid "Search %s"
+msgstr "Sök i %s"
+
+#: build/admin.js:52
+msgid "All posts of this type are already selected."
+msgstr "Alla inlägg av den här typen är redan valda."
+
+#: build/admin.js:52
+msgid "Nothing found."
+msgstr "Inget hittades."
+
+#. translators: %s: date.
+#: build/admin.js:53
+#, js-format
+msgid "changed %s"
+msgstr "ändrad %s"
+
+#: build/admin.js:53
+msgid "Nothing yet. Tick whole post types, single posts or menus."
+msgstr "Inget än. Markera hela inläggstyper, enskilda inlägg eller menyer."
+
+#. translators: 1: post type name, 2: number of posts.
+#: build/admin.js:54
+#, js-format
+msgid "All %1$s (%2$d)"
+msgid_plural "All %1$s (%2$d)"
+msgstr[0] "Alla %1$s (%2$d)"
+msgstr[1] "Alla %1$s (%2$d)"
+
+#: build/admin.js:54
+msgid "Clear all"
+msgstr "Rensa alla"
+
+#. translators: %s: title of the selected item.
+#: build/admin.js:55
+#, js-format
+msgid "Remove %s"
+msgstr "Ta bort %s"
+
+#. translators: %d: post ID.
+#: build/admin.js:56
+#, js-format
+msgid "#%d (not found)"
+msgstr "#%d (hittades inte)"
+
+#. translators: %s: site name.
+#: build/admin.js:57
+#, js-format
+msgid "What do you want to sync from %s?"
+msgstr "Vad vill du synkronisera från %s?"
+
+#: build/admin.js:57
+msgid "Reload the list"
+msgstr "Ladda om listan"
+
+#: build/admin.js:57
+msgid "Next: options"
+msgstr "Nästa: alternativ"
+
+#. translators: %d: number of posts.
+#: build/admin.js:58
+#, js-format
+msgid "All %d post of this type"
+msgid_plural "All %d posts of this type"
+msgstr[0] "Alla %d inlägg av den här typen"
+msgstr[1] "Alla %d inlägg av den här typen"
+
+#: build/admin.js:58
+msgid "Close"
+msgstr "Stäng"
+
+#: build/admin.js:58
+msgid "Choose posts"
+msgstr "Välj inlägg"
+
+#. translators: %d: number of selected posts.
+#: build/admin.js:59
+#, js-format
+msgid "%d selected"
+msgid_plural "%d selected"
+msgstr[0] "%d vald"
+msgstr[1] "%d valda"
+
+#: build/admin.js:59
+msgid "Menus"
+msgstr "Menyer"
+
+#. translators: %d: number of menu items.
+#: build/admin.js:60
+#, js-format
+msgid "%d item"
+msgid_plural "%d items"
+msgstr[0] "%d objekt"
+msgstr[1] "%d objekt"
+
+#. translators: 1: number of items, 2: comma-separated theme locations.
+#: build/admin.js:61
+#, js-format
+msgid "%1$s, shown in: %2$s"
+msgstr "%1$s, visas i: %2$s"
+
+#: build/admin.js:61
+msgid "Where do you want to sync?"
+msgstr "Vilken webbplats vill du synkronisera med?"
+
+#: build/admin.js:61
+msgid "Direction"
+msgstr "Riktning"
+
+#: build/admin.js:61
+msgid "Push to another site"
+msgstr "Skicka till en annan webbplats"
+
+#: build/admin.js:61
+msgid "Send content from this site to the other site."
+msgstr "Skicka innehåll från den här webbplatsen till den andra webbplatsen."
+
+#: build/admin.js:61
+msgid "Pull from another site"
+msgstr "Hämta från en annan webbplats"
+
+#: build/admin.js:61
+msgid "Bring content from the other site to this site."
+msgstr "Hämta innehåll från den andra webbplatsen till den här webbplatsen."
+
+#: build/admin.js:61
+msgid "None of the connected sites allows this site to push to it."
+msgstr "Ingen av de anslutna webbplatserna tillåter att den här webbplatsen skickar till den."
+
+#: build/admin.js:61
+msgid "None of the connected sites allows this site to pull from it."
+msgstr "Ingen av de anslutna webbplatserna tillåter att den här webbplatsen hämtar från den."
+
+#: build/admin.js:61
+msgid "Push to"
+msgstr "Skicka till"
+
+#: build/admin.js:61
+msgid "Pull from"
+msgstr "Hämta från"
+
+#. translators: %s: error message.
+#: build/admin.js:62
+#, js-format
+msgid "The last attempt to reach this site failed: %s You can still try."
+msgstr "Det senaste försöket att nå den här webbplatsen misslyckades: %s Du kan ändå försöka."
+
+#: build/admin.js:62
+msgid "Next: choose content"
+msgstr "Nästa: välj innehåll"
+
+#: build/admin.js:62
+msgid "This site is not connected to any other site yet. Connect the sites first, then come back here."
+msgstr "Den här webbplatsen är inte ansluten till någon annan webbplats än. Anslut webbplatserna först och kom sedan tillbaka hit."
+
+#: build/admin.js:62
+msgid "Go to Connections"
+msgstr "Gå till Anslutningar"
+
+#: build/admin.js:62
+msgid "Ask an administrator to connect the sites."
+msgstr "Be en administratör att ansluta webbplatserna."
+
+#. translators: %s: comma-separated site names.
+#: build/admin.js:63
+#, js-format
+msgid "Not listed, because they do not allow this site to push: %s"
+msgstr "Visas inte eftersom de inte tillåter att den här webbplatsen skickar: %s"
+
+#. translators: %s: comma-separated site names.
+#: build/admin.js:64
+#, js-format
+msgid "Not listed, because they do not allow this site to pull: %s"
+msgstr "Visas inte eftersom de inte tillåter att den här webbplatsen hämtar: %s"
+
+#: build/admin.js:64
+msgid "Connections"
+msgstr "Anslutningar"
+
+#: build/admin.js:64
+msgid "Copy posts, pages, media and menus between this site and your other WordPress sites."
+msgstr "Kopiera inlägg, sidor, media och menyer mellan den här webbplatsen och dina andra WordPress-webbplatser."
+
+#. translators: %s: site name.
+#: build/editor.js:2
+#, js-format
+msgid "Up to date on %s"
+msgstr "Aktuell på %s"
+
+#: build/editor.js:2
+msgid "Changed here since the last push"
+msgstr "Ändrad här sedan den senast skickades"
+
+#. translators: %s: site name.
+#: build/editor.js:3
+#, js-format
+msgid "Edited on %s since the last push"
+msgstr "Redigerad på %s sedan den senast skickades"
+
+#. translators: %s: site name.
+#: build/editor.js:4
+#, js-format
+msgid "Changed here and on %s"
+msgstr "Ändrad här och på %s"
+
+#. translators: %s: site name.
+#: build/editor.js:6
+#, js-format
+msgid "Not on %s yet"
+msgstr "Inte på %s än"
+
+#: build/editor.js:6
+msgid "Could not check this site."
+msgstr "Det gick inte att kontrollera den här webbplatsen."
+
+#: build/editor.js:6
+msgid "Could not load the sync status."
+msgstr "Det gick inte att läsa in synkroniseringsstatusen."
+
+#: build/editor.js:6
+msgid "No site to push to."
+msgstr "Ingen webbplats att skicka till."
+
+#: build/editor.js:6
+msgid "Review and push"
+msgstr "Granska och skicka"
+
+#: build/editor.js:6
+msgid "Save your changes first. Only saved content is pushed."
+msgstr "Spara dina ändringar först. Endast sparat innehåll skickas."
