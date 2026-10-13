@@ -1,0 +1,38 @@
+.jcore-silta-editor__sites {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.jcore-silta-editor__site {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	margin: 0 0 12px;
+	padding-left: 8px;
+	border-left: 3px solid #ddd;
+
+	&.is-synced {
+		border-left-color: #00a32a;
+	}
+
+	&.is-source_changed,
+	&.is-target_changed,
+	&.is-both_changed,
+	&.is-not_synced {
+		border-left-color: #dba617;
+	}
+
+	&.is-error {
+		border-left-color: #d63638;
+	}
+}
+
+.jcore-silta-editor__state {
+	color: #50575e;
+}
+
+.jcore-silta-editor__error {
+	color: #d63638;
+}
