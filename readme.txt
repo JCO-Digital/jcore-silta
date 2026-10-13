@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -97,3 +97,22 @@ Each site that starts syncs has its own key. It is created when the site first c
 Silta notices the copy, switches off the connections that came with it, and staging needs a new pairing string from production.
 
 == Changelog ==
+
+= 0.2.0 =
+
+* Feature: i18n - add Finnish and Swedish translations
+* Feature: add plugin bootstrap and uninstall cleanup
+* Feature: cli - add WP-CLI commands for keys, connections and syncing
+* Feature: editor - show sync status in the block editor sidebar
+* Feature: admin - add Silta admin screen for syncing, connections and history
+* Feature: rest - add REST API for connections, sync jobs, settings and status
+* Feature: jobs - run syncs as resumable background jobs with daily cleanup
+* Feature: sync - add content, media, menu and ACF sync engine with search-replace
+* Feature: remote - add signed site-to-site connections and trusted keys
+* Feature: crypto - add signing keys, signatures and encrypted key vault
+* Feature: core - add site identity, settings, capabilities and database schema
+* Documentation: add readme, developer guide and design notes
+* Test: add unit tests and two-site integration tests
+* CI: add integration and release workflows
+* Maintenance: dev - add two-site Docker dev stack and Playground blueprint
+* Maintenance: set up build tooling, linters and project config

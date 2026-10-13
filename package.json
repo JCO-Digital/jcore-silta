@@ -1,6 +1,6 @@
 {
   "name": "jcore-silta",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Syncs posts, custom fields, terms and media between WordPress sites, with search-replace and a diff mode for choosing what to sync.",
   "author": "J&Co Digital Oy <support@jco.fi>",
   "license": "GPL-2.0-or-later",
