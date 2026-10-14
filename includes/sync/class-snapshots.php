@@ -227,6 +227,8 @@ final class Snapshots {
 				return;
 			}
 			if ( 'attachment' === $post->post_type ) {
+				// Safe to delete with its files: Media::prepare() gives a new
+				// attachment its own copies and never reuses an existing upload.
 				wp_delete_attachment( $local_id, true );
 			} else {
 				wp_trash_post( $local_id );
@@ -258,6 +260,7 @@ final class Snapshots {
 	 * @param array<string, mixed> $data     Snapshot data.
 	 *
 	 * @return void
+	 * @throws \RuntimeException When the snapshot cannot be fully restored.
 	 */
 	private static function restore( string $type, int $local_id, array $data ): void {
 		$state = (array) ( $data['state'] ?? array() );
@@ -266,7 +269,10 @@ final class Snapshots {
 		}
 
 		if ( 'menu' === $type ) {
-			Menus::restore( $state );
+			$warnings = Menus::restore( $state );
+			if ( ! empty( $warnings ) ) {
+				throw new \RuntimeException( esc_html( implode( ' ', $warnings ) ) );
+			}
 
 			return;
 		}
@@ -276,6 +282,13 @@ final class Snapshots {
 			return;
 		}
 
-		Importer::write_post( $local_id, $state, $current, static fn(): bool => true, true );
+		$warnings = array();
+		$result   = Importer::write_post( $local_id, $state, $current, static fn(): bool => true, true, $warnings );
+		if ( is_wp_error( $result ) ) {
+			throw new \RuntimeException( esc_html( $result->get_error_message() ) );
+		}
+		if ( ! empty( $warnings ) ) {
+			throw new \RuntimeException( esc_html( implode( ' ', $warnings ) ) );
+		}
 	}
 }

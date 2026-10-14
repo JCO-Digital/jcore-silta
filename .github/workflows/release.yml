@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# Jobs get a read-only token unless they ask for more.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Lint, build and Plugin Check
@@ -97,6 +101,9 @@ jobs:
     name: Build, release and notify
     needs: release
     if: needs.release.outputs.is_bumped == 'true'
+    # The shared workflow creates the GitHub release.
+    permissions:
+      contents: write
     uses: JCO-Digital/jcore-update/.github/workflows/reusable-plugin-publish.yml@main
     with:
       slug: "jcore-silta"

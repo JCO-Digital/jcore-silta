@@ -7,12 +7,15 @@
 
 namespace Jcore\Silta\Jobs;
 
+use Jcore\Silta\Capabilities;
+use Jcore\Silta\Database;
 use Jcore\Silta\Endpoint\Endpoint;
 use Jcore\Silta\Endpoint\Local;
 use Jcore\Silta\Endpoint\Remote;
 use Jcore\Silta\Remote\Connections;
 use Jcore\Silta\Settings;
 use Jcore\Silta\Site;
+use Jcore\Silta\Sync\Context;
 use Jcore\Silta\Util;
 use WP_Error;
 
@@ -82,7 +85,7 @@ final class Runner {
 		$this->connection = $connection;
 
 		$remote = new Remote( $connection );
-		$local  = new Local( (string) $connection['site'] );
+		$local  = new Local( (string) $connection['site'], true );
 
 		$this->source = 'push' === $job['direction'] ? $local : $remote;
 		$this->target = 'push' === $job['direction'] ? $remote : $local;
@@ -99,6 +102,10 @@ final class Runner {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public static function create( string $connection_id, string $direction, array $selection, array $options ): array|WP_Error {
+		if ( ! empty( $options['save_rules'] ) && ! Capabilities::unrestricted() ) {
+			return new WP_Error( 'jcore_silta_forbidden', __( 'Only an administrator can save shared replacement rules.', 'jcore-silta' ), array( 'status' => 403 ) );
+		}
+
 		$connection = Connections::get( $connection_id );
 		if ( null === $connection ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such connection.', 'jcore-silta' ), array( 'status' => 404 ) );
@@ -172,7 +179,7 @@ final class Runner {
 	 */
 	public static function load( int|string $id ): self|WP_Error {
 		$job = Jobs::get( $id );
-		if ( null === $job || 'initiator' !== $job['role'] ) {
+		if ( null === $job || 'initiator' !== $job['role'] || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
@@ -285,6 +292,13 @@ final class Runner {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such item.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
+		$permission = $this->item_permission( $item_id );
+		if ( is_wp_error( $permission ) ) {
+			$this->deny_item( $item, $permission->get_error_message() );
+
+			return $permission;
+		}
+
 		$response = $this->target->plan(
 			array(
 				'bundle'  => $this->bundle( array( $item ) ),
@@ -334,9 +348,32 @@ final class Runner {
 			return new WP_Error( 'jcore_silta_not_ready', __( 'The sync is not ready to run.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
+		// Capabilities can change between planning and running.
+		if ( ! Capabilities::unrestricted() ) {
+			$this->permitted_items(
+				Jobs::items(
+					(int) $this->job['id'],
+					array(
+						'included'    => 1,
+						'status'      => array( 'planned', 'transferred' ),
+						'object_type' => array( 'post', 'term', 'menu' ),
+					),
+					array( 'payload' => true )
+				)
+			);
+		}
+
 		$deadline = microtime( true ) + $budget;
 		$state    = $this->job['state'];
-		$this->save( array( 'status' => 'running' ) );
+		if ( isset( $state['media']['item'] ) && is_wp_error( $this->item_permission( (int) $state['media']['item'] ) ) ) {
+			unset( $state['media'] );
+		}
+		$this->save(
+			array(
+				'status' => 'running',
+				'state'  => $state,
+			)
+		);
 
 		while ( microtime( true ) < $deadline ) {
 			$phase = (string) ( $state['run'] ?? 'media' );
@@ -394,6 +431,13 @@ final class Runner {
 			return new WP_Error( 'jcore_silta_not_undoable', __( 'Only syncs that have written something can be undone.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
+		if ( 'pull' === $this->job['direction'] && ! Capabilities::unrestricted() ) {
+			$permission = $this->undo_permission();
+			if ( is_wp_error( $permission ) ) {
+				return $permission;
+			}
+		}
+
 		$result = $this->target->undo( array( 'job' => $this->job['uuid'] ) );
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -402,6 +446,37 @@ final class Runner {
 		$this->save( array( 'status' => 'undone' ) );
 
 		return $result;
+	}
+
+	/**
+	 * Checks all local snapshots before undo, which restores the job as a whole.
+	 *
+	 * @return true|WP_Error
+	 */
+	private function undo_permission(): bool|WP_Error {
+		global $wpdb;
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Snapshot ownership and capabilities must be current.
+			$wpdb->prepare( 'SELECT object_type, local_id, action FROM %i WHERE job_uuid = %s', Database::table( 'snapshots' ), $this->job['uuid'] ),
+			ARRAY_A
+		);
+		foreach ( (array) $rows as $row ) {
+			$id = (int) $row['local_id'];
+			if ( 'post' === $row['object_type'] ) {
+				$allowed = current_user_can( 'create' === $row['action'] ? 'delete_post' : 'edit_post', $id );
+			} elseif ( 'menu' === $row['object_type'] ) {
+				$allowed = current_user_can( 'edit_theme_options' );
+			} else {
+				$term     = get_term( $id );
+				$taxonomy = $term instanceof \WP_Term ? get_taxonomy( $term->taxonomy ) : false;
+				$allowed  = false !== $taxonomy && current_user_can( 'create' === $row['action'] ? $taxonomy->cap->delete_terms : $taxonomy->cap->edit_terms );
+			}
+			if ( ! $allowed ) {
+				return new WP_Error( 'jcore_silta_forbidden', __( 'You no longer have permission to undo every object in this sync. Ask an administrator to undo it.', 'jcore-silta' ), array( 'status' => 403 ) );
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -521,10 +596,29 @@ final class Runner {
 				'status' => 'pending',
 				'level'  => $level,
 			),
-			array( 'limit' => (int) Settings::get( 'batch_size' ) )
+			array( 'limit' => $this->batch_size() )
 		);
 		if ( empty( $items ) ) {
 			return 'deps';
+		}
+
+		if ( 'push' === $this->job['direction'] ) {
+			$items = array_values(
+				array_filter(
+					$items,
+					function ( array $item ): bool {
+						if ( self::can_export( (string) $item['object_type'], (int) $item['source_id'] ) ) {
+							return true;
+						}
+						$this->deny_item( $item, __( 'You do not have permission to export this object.', 'jcore-silta' ) );
+
+						return false;
+					}
+				)
+			);
+		}
+		if ( empty( $items ) ) {
+			return 'plan';
 		}
 
 		$bundle = $this->source->export( array( 'keys' => array_column( $items, 'key' ) ) );
@@ -537,10 +631,21 @@ final class Runner {
 			$this->job['state']['source_site'] = $state['source_site'];
 		}
 
-		$objects = array();
-		foreach ( (array) ( $bundle['objects'] ?? array() ) as $record ) {
-			$objects[ (string) $record['key'] ] = $record;
+		if ( 'push' === $this->job['direction'] && ! Capabilities::unrestricted() ) {
+			foreach ( (array) ( $bundle['stubs'] ?? array() ) as $key => $stub ) {
+				list( $type, $id ) = Util::split_key( (string) $key );
+				if ( ! self::can_export( $type, $id ) ) {
+					unset( $bundle['stubs'][ $key ] );
+				}
+			}
 		}
+
+		$objects = self::requested_records( (array) ( $bundle['objects'] ?? array() ), $items );
+		$stubs   = array_filter(
+			(array) ( $bundle['stubs'] ?? array() ),
+			static fn( $stub, $key ): bool => null === Context::record_error( $stub, true ) && $key === $stub['key'],
+			ARRAY_FILTER_USE_BOTH
+		);
 
 		$planned = array();
 		foreach ( $items as $item ) {
@@ -551,7 +656,7 @@ final class Runner {
 					array(
 						'status'   => 'failed',
 						'included' => false,
-						'result'   => array( 'error' => __( 'It no longer exists on the source site.', 'jcore-silta' ) ),
+						'result'   => array( 'error' => __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
 					)
 				);
 				continue;
@@ -559,7 +664,7 @@ final class Runner {
 
 			$payload = array(
 				'object'     => $record,
-				'stubs'      => array_intersect_key( (array) ( $bundle['stubs'] ?? array() ), array_flip( (array) $record['refs'] ) ),
+				'stubs'      => array_intersect_key( $stubs, array_flip( (array) ( $record['refs'] ?? array() ) ) ),
 				'users'      => (array) ( $bundle['users'] ?? array() ),
 				'acf_fields' => (array) ( $bundle['acf_fields'] ?? array() ),
 			);
@@ -576,6 +681,7 @@ final class Runner {
 			$planned[]       = $item;
 		}
 
+		$planned = $this->fit_items( $this->permitted_items( $planned ) );
 		if ( empty( $planned ) ) {
 			return 'plan';
 		}
@@ -728,7 +834,7 @@ final class Runner {
 			);
 		}
 
-		$chunk = (int) Settings::get( 'chunk_kb' ) * 1024;
+		$chunk = \Jcore\Silta\Sync\Media::chunk_size();
 		$files = count( $cursor['files'] );
 		while ( $cursor['index'] < $files && microtime( true ) < $deadline ) {
 			$file = $cursor['files'][ $cursor['index'] ];
@@ -750,6 +856,7 @@ final class Runner {
 			$written = $this->target->media_write(
 				array(
 					'transfer' => $cursor['transfer'],
+					'id'       => $cursor['source'],
 					'path'     => $file['path'],
 					'offset'   => $cursor['offset'],
 					'data'     => (string) $read['data'],
@@ -802,7 +909,7 @@ final class Runner {
 				'object_type' => array( 'post', 'term', 'menu' ),
 			),
 			array(
-				'limit'   => (int) Settings::get( 'batch_size' ),
+				'limit'   => $this->batch_size(),
 				'order'   => 'import',
 				'payload' => true,
 			)
@@ -844,7 +951,7 @@ final class Runner {
 				continue;
 			}
 			$pending[] = (int) $item['id'];
-			if ( count( $pending ) >= (int) Settings::get( 'batch_size' ) ) {
+			if ( count( $pending ) >= $this->batch_size() ) {
 				break;
 			}
 		}
@@ -870,10 +977,29 @@ final class Runner {
 				'object_type' => 'orphan',
 				'included'    => 1,
 				'status'      => 'planned',
-			)
+			),
+			array( 'limit' => $this->batch_size() )
 		);
 		if ( empty( $items ) ) {
 			return true;
+		}
+		if ( 'pull' === $this->job['direction'] && ! Capabilities::unrestricted() ) {
+			$items = array_values(
+				array_filter(
+					$items,
+					function ( array $item ): bool {
+						if ( current_user_can( 'delete_post', (int) $item['target_id'] ) ) {
+							return true;
+						}
+						$this->deny_item( $item, __( 'You do not have permission to trash this post.', 'jcore-silta' ) );
+
+						return false;
+					}
+				)
+			);
+		}
+		if ( empty( $items ) ) {
+			return false;
 		}
 
 		$options          = $this->import_options( array() );
@@ -903,7 +1029,7 @@ final class Runner {
 			);
 		}
 
-		return true;
+		return false;
 	}
 
 	/**
@@ -915,6 +1041,10 @@ final class Runner {
 	 * @return bool|WP_Error False: more may follow.
 	 */
 	private function import( array $items, bool $fixup ): bool|WP_Error {
+		$items = $this->fit_items( $this->permitted_items( $items ) );
+		if ( empty( $items ) ) {
+			return false;
+		}
 		$options = $this->import_options( $items );
 		if ( $fixup ) {
 			$options['confirmed'] = array_fill_keys( array_column( $items, 'key' ), true );
@@ -982,6 +1112,257 @@ final class Runner {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Keeps only well-formed records that match the requested object key, kind
+	 * and ID. The job stores and reads them (refs, titles) before the target's
+	 * Context sees them, so they get the same structural check here.
+	 *
+	 * @param array<int, mixed>                $records Export response objects.
+	 * @param array<int, array<string, mixed>> $items   Requested items.
+	 *
+	 * @return array<string, array<string, mixed>> Valid records keyed by object key.
+	 */
+	public static function requested_records( array $records, array $items ): array {
+		$requested = array_column( $items, null, 'key' );
+		$valid     = array();
+		foreach ( $records as $record ) {
+			if ( null !== Context::record_error( $record ) ) {
+				continue;
+			}
+			$item = $requested[ $record['key'] ] ?? null;
+			if ( null === $item || $record['type'] !== $item['object_type'] || $record['id'] !== (int) $item['source_id'] || Util::key( $record['type'], $record['id'] ) !== $record['key'] ) {
+				continue;
+			}
+			$valid[ $record['key'] ] = $record;
+		}
+
+		return $valid;
+	}
+
+	/**
+	 * Whether the current user may export a source object.
+	 *
+	 * @param string $type Object kind.
+	 * @param int    $id   Source ID.
+	 *
+	 * @return bool
+	 */
+	public static function can_export( string $type, int $id ): bool {
+		if ( Capabilities::unrestricted() ) {
+			return true;
+		}
+		if ( 'post' === $type ) {
+			return current_user_can( 'read_post', $id );
+		}
+		if ( 'menu' === $type ) {
+			return current_user_can( 'edit_theme_options' );
+		}
+		$term     = 'term' === $type ? get_term( $id ) : null;
+		$taxonomy = $term instanceof \WP_Term ? get_taxonomy( $term->taxonomy ) : null;
+
+		return null !== $taxonomy && false !== $taxonomy && current_user_can( $taxonomy->cap->assign_terms );
+	}
+
+	/**
+	 * Checks permission for a saved item before exposing its local diff.
+	 *
+	 * @param int $item_id Item ID.
+	 *
+	 * @return true|WP_Error
+	 */
+	public function item_permission( int $item_id ): bool|WP_Error {
+		$item = Jobs::item( (int) $this->job['id'], $item_id );
+		if ( null === $item || empty( $item['payload']['object'] ) ) {
+			return new WP_Error( 'jcore_silta_not_found', __( 'No such item.', 'jcore-silta' ), array( 'status' => 404 ) );
+		}
+		if ( ! $this->can_import_item( $item ) ) {
+			return new WP_Error( 'jcore_silta_forbidden', __( 'You do not have permission to sync this object or its taxonomies.', 'jcore-silta' ), array( 'status' => 403 ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Checks local object capabilities using the same matching rules as the importer.
+	 *
+	 * @param array<string, mixed> $item Item with payload.
+	 *
+	 * @return bool
+	 */
+	private function can_import_item( array &$item ): bool {
+		if ( Capabilities::unrestricted() ) {
+			return true;
+		}
+		if ( 'push' === $this->job['direction'] ) {
+			return self::can_export( (string) $item['object_type'], (int) $item['source_id'] );
+		}
+		$record = (array) ( $item['payload']['object'] ?? array() );
+		$ctx    = new Context(
+			array(
+				'site'    => $this->job['state']['source_site'] ?? array(),
+				'objects' => array( $record ),
+			),
+			array( 'overrides' => array( $item['key'] => $item['override']['target'] ?? null ) ),
+			(string) $this->connection['site']
+		);
+		if ( ! isset( $ctx->objects[ $item['key'] ] ) ) {
+			return false;
+		}
+		$match = $ctx->match( $record );
+		if ( ! self::can_import_record( $record, null === $match ? null : (int) $match['id'] ) ) {
+			return false;
+		}
+		// Pin the checked match for this request, including an explicit create,
+		// so earlier objects in this batch cannot change the matching decision.
+		$item['override'] = array( 'target' => null === $match ? 'create' : (int) $match['id'] );
+
+		return true;
+	}
+
+	/**
+	 * Checks capabilities for a pulled record and its resolved local target.
+	 *
+	 * @param array<string, mixed> $record    Incoming object.
+	 * @param int|null             $target_id Existing target, or null for creation.
+	 *
+	 * @return bool
+	 */
+	public static function can_import_record( array $record, ?int $target_id ): bool {
+		if ( Capabilities::unrestricted() ) {
+			return true;
+		}
+		if ( 'menu' === ( $record['type'] ?? '' ) ) {
+			return current_user_can( 'edit_theme_options' );
+		}
+		if ( 'term' === ( $record['type'] ?? '' ) ) {
+			$taxonomy = get_taxonomy( (string) ( $record['taxonomy'] ?? '' ) );
+
+			return false !== $taxonomy && current_user_can( $taxonomy->cap->assign_terms ) && current_user_can( $taxonomy->cap->edit_terms );
+		}
+		if ( 'post' !== ( $record['type'] ?? '' ) ) {
+			return false;
+		}
+		$type = get_post_type_object( (string) ( $record['post_type'] ?? '' ) );
+		if ( null === $type || ( null !== $target_id ? ! current_user_can( 'edit_post', $target_id ) : ! current_user_can( $type->cap->create_posts ) ) ) {
+			return false;
+		}
+		foreach ( array_keys( (array) ( $record['terms'] ?? array() ) ) as $name ) {
+			$taxonomy = get_taxonomy( (string) $name );
+			if ( false === $taxonomy || ! current_user_can( $taxonomy->cap->assign_terms ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Excludes denied items and records a clear per-item error.
+	 *
+	 * @param array<int, array<string, mixed>> $items Items with payloads.
+	 *
+	 * @return array<int, array<string, mixed>> Allowed items.
+	 */
+	private function permitted_items( array $items ): array {
+		$allowed = array();
+		foreach ( $items as $item ) {
+			if ( $this->can_import_item( $item ) ) {
+				$allowed[] = $item;
+			} else {
+				$this->deny_item( $item, __( 'You do not have permission to sync this object or its taxonomies.', 'jcore-silta' ) );
+			}
+		}
+
+		return $allowed;
+	}
+
+	/**
+	 * Records why an item was skipped.
+	 *
+	 * @param array<string, mixed> $item    Item.
+	 * @param string               $message User-facing reason.
+	 *
+	 * @return void
+	 */
+	private function deny_item( array $item, string $message ): void {
+		Jobs::update_item(
+			(int) $item['id'],
+			array(
+				'status'   => 'failed',
+				'included' => false,
+				'action'   => 'error',
+				'result'   => array(
+					'status' => 'failed',
+					'error'  => $message,
+				),
+				'plan'     => array(
+					'action' => 'error',
+					'errors' => array( '' => $message ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Limits batches by both protocol collection caps.
+	 *
+	 * @return int
+	 */
+	private function batch_size(): int {
+		return max( 1, min( (int) Settings::get( 'batch_size' ), Endpoint::key_limit(), Endpoint::object_limit() ) );
+	}
+
+	/**
+	 * Splits large bundles at object boundaries and rejects an individually oversized object.
+	 *
+	 * @param array<int, array<string, mixed>> $items Items with payloads.
+	 *
+	 * @return array<int, array<string, mixed>> Next request's items.
+	 */
+	private function fit_items( array $items ): array {
+		// Most batches fit as a whole; only measure item by item when not.
+		if ( empty( $items ) || $this->request_size( $items ) <= Endpoint::body_limit() ) {
+			return $items;
+		}
+
+		$fitting = array();
+		foreach ( $items as $item ) {
+			if ( $this->request_size( array_merge( $fitting, array( $item ) ) ) > Endpoint::body_limit() ) {
+				if ( ! empty( $fitting ) ) {
+					break;
+				}
+				$this->deny_item( $item, __( 'This object exceeds the maximum sync request size.', 'jcore-silta' ) );
+				continue;
+			}
+			$fitting[] = $item;
+		}
+
+		return $fitting;
+	}
+
+	/**
+	 * Size of the largest request a batch of items makes: the import with
+	 * every item confirmed.
+	 *
+	 * @param array<int, array<string, mixed>> $items Items with payloads.
+	 *
+	 * @return int Bytes.
+	 */
+	private function request_size( array $items ): int {
+		$options              = $this->import_options( $items );
+		$options['confirmed'] = array_fill_keys( array_column( $items, 'key' ), true );
+		$options['fixup']     = true;
+
+		return strlen(
+			Util::encode(
+				array(
+					'bundle'  => $this->bundle( $items ),
+					'options' => $options,
+				)
+			)
+		);
 	}
 
 	/**

@@ -42,21 +42,27 @@ final class Preflight {
 	private static function post( array $record ): array {
 		$errors = array();
 
-		if ( ! post_type_exists( (string) $record['post_type'] ) ) {
+		if ( ! Content::syncable_type( (string) $record['post_type'] ) ) {
 			$errors[''] = sprintf(
 				/* translators: %s: post type name. */
-				__( 'This site has no post type "%s".', 'jcore-silta' ),
+				__( 'Post type "%s" is missing or cannot be synced on this site.', 'jcore-silta' ),
 				(string) $record['post_type']
 			);
 
 			return $errors;
 		}
 
+		if ( ! Content::syncable_status( $record['post_type'], (string) ( $record['fields']['post_status'] ?? '' ) ) ) {
+			$errors[''] = __( 'This post status cannot be synced.', 'jcore-silta' );
+
+			return $errors;
+		}
+
 		foreach ( array_keys( (array) ( $record['terms'] ?? array() ) ) as $taxonomy ) {
-			if ( ! taxonomy_exists( (string) $taxonomy ) ) {
+			if ( ! Content::syncable_taxonomy( (string) $taxonomy ) || ! is_object_in_taxonomy( $record['post_type'], (string) $taxonomy ) ) {
 				$errors[ 'terms.' . $taxonomy ] = sprintf(
 					/* translators: %s: taxonomy name. */
-					__( 'This site has no taxonomy "%s".', 'jcore-silta' ),
+					__( 'Taxonomy "%s" is missing or cannot be synced for this object.', 'jcore-silta' ),
 					(string) $taxonomy
 				);
 			}
@@ -88,11 +94,11 @@ final class Preflight {
 	 * @return array<string, string>
 	 */
 	private static function term( array $record ): array {
-		if ( ! taxonomy_exists( (string) $record['taxonomy'] ) ) {
+		if ( ! Content::syncable_taxonomy( (string) $record['taxonomy'] ) ) {
 			return array(
 				'' => sprintf(
 					/* translators: %s: taxonomy name. */
-					__( 'This site has no taxonomy "%s".', 'jcore-silta' ),
+					__( 'Taxonomy "%s" is missing or cannot be synced for this object.', 'jcore-silta' ),
 					(string) $record['taxonomy']
 				),
 			);

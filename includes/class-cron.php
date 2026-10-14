@@ -58,5 +58,10 @@ final class Cron {
 		Snapshots::prune( $days );
 		Jobs::prune( max( $days, 30 ) );
 		Media::cleanup();
+
+		global $wpdb;
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Expired nonce reservations.
+			$wpdb->prepare( 'DELETE FROM %i WHERE expires < %d', Database::table( 'nonces' ), time() )
+		);
 	}
 }

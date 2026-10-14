@@ -78,6 +78,7 @@ final class Exporter {
 			'users'      => $this->users,
 			'acf_fields' => $this->acf,
 			'missing'    => $missing,
+			'errors'     => array_fill_keys( $missing, __( 'The object is missing or its type, taxonomy or status is not eligible for syncing.', 'jcore-silta' ) ),
 		);
 	}
 
@@ -110,7 +111,7 @@ final class Exporter {
 
 		if ( 'post' === $type ) {
 			$post = get_post( $id );
-			if ( ! $post instanceof \WP_Post || in_array( $post->post_type, array( 'revision', 'nav_menu_item' ), true ) ) {
+			if ( ! $post instanceof \WP_Post || ! Content::syncable_type( $post->post_type ) || ! Content::syncable_status( $post->post_type, $post->post_status ) ) {
 				return null;
 			}
 
@@ -135,7 +136,7 @@ final class Exporter {
 
 		if ( 'term' === $type ) {
 			$term = get_term( $id );
-			if ( ! $term instanceof \WP_Term ) {
+			if ( ! $term instanceof \WP_Term || ! Content::syncable_taxonomy( $term->taxonomy ) ) {
 				return null;
 			}
 
@@ -186,7 +187,7 @@ final class Exporter {
 	 */
 	private function object( string $type, int $id ): ?array {
 		$state = State::read( $type, $id );
-		if ( null === $state ) {
+		if ( null === $state || ( 'post' === $type && ! Content::syncable_status( $state['post_type'], $state['fields']['post_status'] ) ) ) {
 			return null;
 		}
 

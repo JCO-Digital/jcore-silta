@@ -87,7 +87,7 @@ final class Connections {
 		}
 
 		if ( $decoded['site'] === Site::uuid() ) {
-			return new WP_Error( 'jcore_silta_self', __( 'This pairing string was created on this site. Paste it on the other site.', 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_self', __( 'This pairing string was created on this site. Paste it on the other site.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
 		$ready = Identity::ensure();
@@ -113,7 +113,12 @@ final class Connections {
 
 		$remote = is_array( $response['site'] ?? null ) ? $response['site'] : array();
 		if ( ( $remote['uuid'] ?? '' ) !== $decoded['site'] ) {
-			return new WP_Error( 'jcore_silta_site_mismatch', __( 'The remote site answered with a different identity than the pairing string promised.', 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_site_mismatch', __( 'The remote site answered with a different identity than the pairing string promised.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+
+		$rest = self::validate_url( (string) ( $remote['rest'] ?? $decoded['rest'] ), $decoded['rest'] );
+		if ( is_wp_error( $rest ) ) {
+			return $rest;
 		}
 
 		$connections = self::all();
@@ -138,7 +143,7 @@ final class Connections {
 		$connection = array(
 			'id'          => $id,
 			'label'       => '' !== $label ? sanitize_text_field( $label ) : sanitize_text_field( (string) ( $remote['name'] ?? $decoded['name'] ) ),
-			'rest'        => esc_url_raw( (string) ( $remote['rest'] ?? $decoded['rest'] ) ),
+			'rest'        => $rest,
 			'home'        => esc_url_raw( (string) ( $remote['home'] ?? $decoded['home'] ) ),
 			'site'        => $decoded['site'],
 			'name'        => sanitize_text_field( (string) ( $remote['name'] ?? '' ) ),
@@ -252,7 +257,8 @@ final class Connections {
 					__( 'The remote runs an incompatible version of Silta (protocol %1$d, this site %2$d). Update the plugin on both sites.', 'jcore-silta' ),
 					$protocol,
 					Site::PROTOCOL
-				)
+				),
+				array( 'status' => 409 )
 			);
 			self::set_status( $id, 'error', $error->get_error_message() );
 
@@ -332,6 +338,34 @@ final class Connections {
 	}
 
 	/**
+	 * Validates a remote address, optionally against the pairing token's host.
+	 *
+	 * @param string $url      Remote URL.
+	 * @param string $expected Original token URL, when validating a pairing response.
+	 *
+	 * @return string|WP_Error Sanitized address.
+	 */
+	public static function validate_url( string $url, string $expected = '' ): string|WP_Error {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) || ! in_array( $parts['scheme'] ?? '', array( 'http', 'https' ), true ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['fragment'] ) ) {
+			return new WP_Error( 'jcore_silta_bad_url', __( 'The remote REST URL must be an HTTP or HTTPS address without credentials or a fragment.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+		if ( 'http' === $parts['scheme'] && ! self::allow_insecure( $url ) ) {
+			return new WP_Error( 'jcore_silta_insecure', __( 'The other site does not use HTTPS. Silta only connects to sites over HTTPS, except in local and development environments.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+		if ( '' !== $expected && strtolower( $parts['host'] ) !== strtolower( (string) wp_parse_url( $expected, PHP_URL_HOST ) ) ) {
+			return new WP_Error( 'jcore_silta_url_mismatch', __( 'The remote REST URL uses a different host than the pairing string.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+
+		$clean = esc_url_raw( $url );
+		if ( '' === $clean ) {
+			return new WP_Error( 'jcore_silta_bad_url', __( 'The remote REST URL is not valid.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+
+		return $clean;
+	}
+
+	/**
 	 * Decodes and validates a pairing string.
 	 *
 	 * @param string $pairing Pairing string.
@@ -340,7 +374,7 @@ final class Connections {
 	 */
 	public static function decode( string $pairing ): array|WP_Error {
 		$pairing = trim( $pairing );
-		$invalid = new WP_Error( 'jcore_silta_bad_pairing', __( 'That is not a valid pairing string. Copy it again from the other site.', 'jcore-silta' ) );
+		$invalid = new WP_Error( 'jcore_silta_bad_pairing', __( 'That is not a valid pairing string. Copy it again from the other site.', 'jcore-silta' ), array( 'status' => 400 ) );
 
 		if ( ! str_starts_with( $pairing, Trusted_Keys::PREFIX ) ) {
 			return $invalid;
@@ -348,17 +382,13 @@ final class Connections {
 
 		$json = Util::base64url_decode( substr( $pairing, strlen( Trusted_Keys::PREFIX ) ) );
 		$data = null === $json ? null : json_decode( $json, true );
-		if ( ! is_array( $data ) || empty( $data['rest'] ) || empty( $data['site'] ) || empty( $data['token'] ) || ! wp_is_uuid( (string) $data['site'] ) ) {
+		if ( ! is_array( $data ) || ! is_string( $data['rest'] ?? null ) || ! is_string( $data['site'] ?? null ) || ! is_string( $data['token'] ?? null ) || '' === $data['token'] || ! wp_is_uuid( (string) $data['site'] ) ) {
 			return $invalid;
 		}
 
-		$rest   = esc_url_raw( (string) $data['rest'] );
-		$scheme = wp_parse_url( $rest, PHP_URL_SCHEME );
-		if ( ! in_array( $scheme, array( 'http', 'https' ), true ) ) {
-			return $invalid;
-		}
-		if ( 'http' === $scheme && ! self::allow_insecure( $rest ) ) {
-			return new WP_Error( 'jcore_silta_insecure', __( 'The other site does not use HTTPS. Silta only connects to sites over HTTPS, except in local and development environments.', 'jcore-silta' ) );
+		$rest = self::validate_url( (string) $data['rest'] );
+		if ( is_wp_error( $rest ) ) {
+			return $rest;
 		}
 
 		return array(

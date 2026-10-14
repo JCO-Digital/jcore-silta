@@ -7,6 +7,7 @@
 
 namespace Jcore\Silta\Rest;
 
+use Jcore\Silta\Capabilities;
 use Jcore\Silta\Endpoint\Local;
 use Jcore\Silta\Jobs\Jobs;
 use Jcore\Silta\Jobs\Runner;
@@ -199,7 +200,7 @@ final class Jobs_Controller extends Controller {
 	 * @return WP_REST_Response
 	 */
 	public function list_jobs( WP_REST_Request $request ): WP_REST_Response {
-		$list = Jobs::list( (int) $request['page'] );
+		$list = Jobs::list( (int) $request['page'], 20, Capabilities::unrestricted() ? null : get_current_user_id() );
 
 		return rest_ensure_response(
 			array(
@@ -237,7 +238,7 @@ final class Jobs_Controller extends Controller {
 	 */
 	public function get_job( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$job = Jobs::get( (int) $request['id'] );
-		if ( null === $job ) {
+		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
@@ -259,7 +260,7 @@ final class Jobs_Controller extends Controller {
 	 */
 	public function delete_job( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$job = Jobs::get( (int) $request['id'] );
-		if ( null === $job ) {
+		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 		if ( ! in_array( $job['status'], array( 'preparing', 'ready', 'cancelled' ), true ) ) {
@@ -320,7 +321,7 @@ final class Jobs_Controller extends Controller {
 	 */
 	public function undo_job( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$job = Jobs::get( (int) $request['id'] );
-		if ( null === $job ) {
+		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 		if ( 'undone' === $job['status'] ) {
@@ -363,7 +364,7 @@ final class Jobs_Controller extends Controller {
 	 */
 	public function list_items( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$job = Jobs::get( (int) $request['id'] );
-		if ( null === $job ) {
+		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
@@ -474,7 +475,12 @@ final class Jobs_Controller extends Controller {
 	public function diff_item( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$runner = Runner::load( (int) $request['id'] );
 
-		return $this->respond( is_wp_error( $runner ) ? $runner : $runner->diff( (int) $request['item'] ) );
+		if ( is_wp_error( $runner ) ) {
+			return $runner;
+		}
+		$permission = $runner->item_permission( (int) $request['item'] );
+
+		return $this->respond( is_wp_error( $permission ) ? $permission : $runner->diff( (int) $request['item'] ) );
 	}
 
 	/**
@@ -486,7 +492,7 @@ final class Jobs_Controller extends Controller {
 	 */
 	private function editable_job( int $id ): array|WP_Error {
 		$job = Jobs::get( $id );
-		if ( null === $job || 'initiator' !== $job['role'] ) {
+		if ( null === $job || 'initiator' !== $job['role'] || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 		if ( ! in_array( $job['status'], array( 'preparing', 'ready' ), true ) ) {

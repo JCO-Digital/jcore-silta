@@ -7,6 +7,7 @@
 
 namespace Jcore\Silta\Sync;
 
+use Jcore\Silta\Capabilities;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -62,6 +63,9 @@ final class Importer {
 	public function run( array $options ): array {
 		$kses    = self::kses_off();
 		$results = array();
+		foreach ( $this->ctx->errors as $key => $error ) {
+			$results[ $key ] = self::failed( $error );
+		}
 
 		foreach ( $this->ctx->objects as $key => $record ) {
 			try {
@@ -88,12 +92,16 @@ final class Importer {
 	}
 
 	/**
-	 * Switches off the HTML filtering WordPress applies when the current user
-	 * lacks unfiltered_html: content arrives exactly as the source has it.
+	 * Switches off HTML filtering only when the acting user may save unfiltered HTML.
 	 *
 	 * @return bool Whether the filters were on, so they can be restored.
 	 */
 	public static function kses_off(): bool {
+		if ( ! Capabilities::unfiltered_html() ) {
+			kses_init_filters();
+
+			return false;
+		}
 		$active = false !== has_filter( 'content_save_pre', 'wp_filter_post_kses' );
 		if ( $active ) {
 			kses_remove_filters();
@@ -110,10 +118,14 @@ final class Importer {
 	 * @param array<string, mixed>|null $local    Current local state, or null right after creating.
 	 * @param callable                  $wants    Callback( string $section ): bool.
 	 * @param bool                      $restore  Whether this restores a snapshot (also restores the file).
+	 * @param string[]                  $warnings Warnings for rejected meta values.
 	 *
 	 * @return true|WP_Error
 	 */
-	public static function write_post( int $id, array $incoming, ?array $local, callable $wants, bool $restore = false ): bool|WP_Error {
+	public static function write_post( int $id, array $incoming, ?array $local, callable $wants, bool $restore = false, array &$warnings = array() ): bool|WP_Error {
+		if ( ! Content::syncable_type( (string) $incoming['post_type'] ) ) {
+			return new WP_Error( 'jcore_silta_post_type', __( 'This post type cannot be synced.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
 		$fields     = (array) $incoming['fields'];
 		$attachment = 'attachment' === $incoming['post_type'];
 		$postarr    = array( 'ID' => $id );
@@ -153,7 +165,7 @@ final class Importer {
 		if ( ! $attachment ) {
 			if ( $wants( 'fields.page_template' ) ) {
 				$template = (string) ( $fields['page_template'] ?? '' );
-				Meta_Writer::replace( 'post', $id, array( '_wp_page_template' ), '' === $template ? array() : array( '_wp_page_template' => array( $template ) ) );
+				$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, array( '_wp_page_template' ), '' === $template ? array() : array( '_wp_page_template' => array( $template ) ), true ) );
 			}
 			if ( $wants( 'fields.post_format' ) && post_type_supports( (string) $incoming['post_type'], 'post-formats' ) ) {
 				set_post_format( $id, (string) ( $fields['post_format'] ?? '' ) );
@@ -167,7 +179,7 @@ final class Importer {
 			}
 			if ( $wants( 'featured_image' ) ) {
 				$thumbnail = (int) ( $incoming['featured_image'] ?? 0 );
-				Meta_Writer::replace( 'post', $id, array( '_thumbnail_id' ), $thumbnail > 0 ? array( '_thumbnail_id' => array( (string) $thumbnail ) ) : array() );
+				Meta_Writer::replace( 'post', $id, array( '_thumbnail_id' ), $thumbnail > 0 ? array( '_thumbnail_id' => array( (string) $thumbnail ) ) : array(), true );
 			}
 		}
 
@@ -178,12 +190,12 @@ final class Importer {
 			if ( ! $wants( 'meta.' . $group ) ) {
 				continue;
 			}
-			$keys = array_merge( array_keys( $theirs[ $group ] ?? array() ), array_keys( $ours[ $group ] ?? array() ) );
-			Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array() );
+			$keys     = array_merge( array_keys( $theirs[ $group ] ?? array() ), array_keys( $ours[ $group ] ?? array() ) );
+			$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array() ) );
 		}
 
 		foreach ( (array) ( $incoming['terms'] ?? array() ) as $taxonomy => $ids ) {
-			if ( taxonomy_exists( (string) $taxonomy ) && $wants( 'terms.' . $taxonomy ) ) {
+			if ( Content::syncable_taxonomy( (string) $taxonomy ) && is_object_in_taxonomy( $incoming['post_type'], (string) $taxonomy ) && $wants( 'terms.' . $taxonomy ) ) {
 				wp_set_object_terms( $id, array_map( 'intval', (array) $ids ), (string) $taxonomy );
 			}
 		}
@@ -274,20 +286,20 @@ final class Importer {
 			);
 
 			if ( $attachment && isset( $changed['file'] ) ) {
-				$extra = $this->replace_file( $local_id, $incoming, (string) ( $options['transfers'][ $key ] ?? '' ) );
+				$extra = $this->replace_file( $local_id, $incoming, is_string( $options['transfers'][ $key ] ?? null ) ? $options['transfers'][ $key ] : '', $record );
 				if ( is_wp_error( $extra ) ) {
 					return self::failed( $extra->get_error_message() );
 				}
 			}
 
-			$written = self::write_post( $local_id, $incoming, $local, static fn( string $section ): bool => isset( $changed[ $section ] ) );
+			$written = self::write_post( $local_id, $incoming, $local, static fn( string $section ): bool => isset( $changed[ $section ] ), false, $warnings );
 			if ( is_wp_error( $written ) ) {
 				return self::failed( $written->get_error_message() );
 			}
 			$action = 'updated';
 		} else {
 			if ( $attachment ) {
-				$created = $this->create_attachment( $incoming, (string) ( $options['transfers'][ $key ] ?? '' ) );
+				$created = $this->create_attachment( $incoming, is_string( $options['transfers'][ $key ] ?? null ) ? $options['transfers'][ $key ] : '', $record );
 				if ( is_wp_error( $created ) ) {
 					return self::failed( $created->get_error_message() );
 				}
@@ -325,7 +337,9 @@ final class Importer {
 					}
 
 					return $rest( $section );
-				}
+				},
+				false,
+				$warnings
 			);
 			$action = 'created';
 		}
@@ -378,22 +392,23 @@ final class Importer {
 	 *
 	 * @param array<string, mixed> $incoming Incoming attachment.
 	 * @param string               $transfer Transfer ID.
+	 * @param array<string, mixed> $record   Original attachment before transformation.
 	 *
 	 * @return array{0: int, 1: array<string, mixed>}|WP_Error ID and mapping extra.
 	 */
-	private function create_attachment( array $incoming, string $transfer ): array|WP_Error {
+	private function create_attachment( array $incoming, string $transfer, array $record ): array|WP_Error {
 		if ( '' === $transfer ) {
-			return new WP_Error( 'jcore_silta_no_transfer', __( "The attachment's file was not transferred.", 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_no_transfer', __( "The attachment's file was not transferred.", 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		$files = Media::finalize( $transfer );
+		$files = Media::finalize( $transfer, $this->ctx->site, $record );
 		if ( is_wp_error( $files ) ) {
 			return $files;
 		}
 
 		$fields  = (array) $incoming['fields'];
 		$postarr = array(
-			'post_mime_type' => (string) ( $fields['post_mime_type'] ?? '' ),
+			'post_mime_type' => $files['mime'],
 			'post_title'     => (string) $fields['post_title'],
 			'post_name'      => (string) $fields['post_name'],
 			'post_excerpt'   => (string) $fields['post_excerpt'],
@@ -421,17 +436,29 @@ final class Importer {
 	 * @param int                  $id       Local attachment ID.
 	 * @param array<string, mixed> $incoming Incoming attachment.
 	 * @param string               $transfer Transfer ID.
+	 * @param array<string, mixed> $record   Original attachment before transformation.
 	 *
 	 * @return array<string, mixed>|WP_Error Mapping extra.
 	 */
-	private function replace_file( int $id, array $incoming, string $transfer ): array|WP_Error {
+	private function replace_file( int $id, array $incoming, string $transfer, array $record ): array|WP_Error {
 		if ( '' === $transfer ) {
-			return new WP_Error( 'jcore_silta_no_transfer', __( "The attachment's file was not transferred.", 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_no_transfer', __( "The attachment's file was not transferred.", 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		$files = Media::finalize( $transfer );
+		$files = Media::finalize( $transfer, $this->ctx->site, $record, $id );
 		if ( is_wp_error( $files ) ) {
 			return $files;
+		}
+
+		$updated = wp_update_post(
+			array(
+				'ID'             => $id,
+				'post_mime_type' => $files['mime'],
+			),
+			true
+		);
+		if ( is_wp_error( $updated ) ) {
+			return $updated;
 		}
 
 		update_attached_file( $id, Media::basedir() . '/' . $files['main'] );
@@ -451,13 +478,21 @@ final class Importer {
 	 * @return void
 	 */
 	private function finish_file( int $id, array $incoming, array $files ): void {
-		$metadata = Media::target_metadata( (array) ( $incoming['file']['metadata'] ?? array() ), (string) $files['main'], (array) $files['map'] );
+		$metadata = Media::target_metadata( $files['metadata'], (string) $files['main'], (array) $files['map'] );
 		wp_update_attachment_metadata( $id, $metadata );
 
 		if ( wp_attachment_is_image( $id ) ) {
 			require_once ABSPATH . 'wp-admin/includes/image.php';
 			if ( function_exists( 'wp_update_image_subsizes' ) ) {
 				wp_update_image_subsizes( $id );
+				$generated = Media::describe( $id, false );
+				if ( null !== $generated ) {
+					$map = $files['map'];
+					foreach ( $generated['files'] as $entry ) {
+						$map[ $entry['path'] ] = $entry['path'];
+					}
+					wp_update_attachment_metadata( $id, Media::target_metadata( $generated['metadata'], $files['main'], $map ) );
+				}
 			}
 		}
 	}
@@ -516,8 +551,8 @@ final class Importer {
 			);
 		}
 
-		$id = (int) $created['term_id'];
-		Meta_Writer::replace( 'term', $id, array_keys( (array) $incoming['meta'] ), (array) $incoming['meta'] );
+		$id       = (int) $created['term_id'];
+		$warnings = Meta_Writer::replace( 'term', $id, array_keys( (array) $incoming['meta'] ), (array) $incoming['meta'] );
 		if ( ! empty( $incoming['language']['lang'] ) ) {
 			Polylang::set_term( $id, $incoming['language'] );
 		}
@@ -538,6 +573,7 @@ final class Importer {
 			'status'     => 'imported',
 			'action'     => 'created',
 			'local_id'   => $id,
+			'warnings'   => $warnings,
 			'unresolved' => $incoming['unresolved'],
 		);
 	}

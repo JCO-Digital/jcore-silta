@@ -173,8 +173,9 @@ function DiffBody( { section, targetLabel } ) {
 		return (
 			<div
 				className="jcore-silta-diff__text"
-				// The HTML is core's wp_text_diff() table, built and escaped
-				// on the server by our own REST API (Differ::text_diff()).
+				// The HTML is core's wp_text_diff() table (Differ::text_diff()).
+				// On a push the other site builds it, so Endpoint\Remote::diff()
+				// strips it to the table's own tags before it gets here.
 				dangerouslySetInnerHTML={ { __html: section.diff } }
 			/>
 		);

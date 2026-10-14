@@ -10,6 +10,7 @@ namespace Jcore\Silta\Remote;
 use Jcore\Silta\Crypto\Identity;
 use Jcore\Silta\Crypto\Signature;
 use Jcore\Silta\Util;
+use Jcore\Silta\Endpoint\Endpoint;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -54,10 +55,10 @@ final class Client {
 	public function call( string $action, array $payload = array(), int $timeout = 60 ): array|WP_Error {
 		$status = $this->connection['status'] ?? 'ok';
 		if ( 'inherited' === $status ) {
-			return new WP_Error( 'jcore_silta_inherited', __( 'This connection came with a copied database. Pair the sites again.', 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_inherited', __( 'This connection came with a copied database. Pair the sites again.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 		if ( 'repair' === $status ) {
-			return new WP_Error( 'jcore_silta_repair', __( "This site's key has changed since the connection was made. Pair the sites again.", 'jcore-silta' ) );
+			return new WP_Error( 'jcore_silta_repair', __( "This site's key has changed since the connection was made. Pair the sites again.", 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
 		return self::send(
@@ -100,7 +101,15 @@ final class Client {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	private static function send( string $rest, string $remote_site, string $action, array $payload, ?array $auth, int $timeout ): array|WP_Error {
-		$body      = Util::encode( $payload );
+		$valid = Connections::validate_url( $rest );
+		if ( is_wp_error( $valid ) ) {
+			return $valid;
+		}
+		$rest = $valid;
+		$body = Util::encode( $payload );
+		if ( strlen( $body ) > Endpoint::body_limit() ) {
+			return new WP_Error( 'jcore_silta_request_too_large', __( 'The sync request is too large. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 413 ) );
+		}
 		$timestamp = (string) time();
 		$nonce     = bin2hex( random_bytes( 16 ) );
 		$route     = self::ROUTE_BASE . $action;
@@ -139,13 +148,27 @@ final class Client {
 		 */
 		$url = (string) apply_filters( 'jcore_silta_remote_url', $url, $action );
 
+		$valid = Connections::validate_url( $url );
+		if ( is_wp_error( $valid ) ) {
+			return $valid;
+		}
+
+		$url = $valid;
+
+		// The existing insecure-environment opt-in also permits private networks;
+		// a site can explicitly allow a private HTTPS peer with this filter.
+		$private = (bool) apply_filters( 'jcore_silta_allow_private_network', Connections::allow_insecure( $url ), $url );
+		$limit   = max( 1, (int) apply_filters( 'jcore_silta_max_response_bytes', 32 * 1024 * 1024, $action ) );
+
 		$response = wp_remote_post(
 			$url,
 			array(
-				'headers'     => $headers,
-				'body'        => $body,
-				'timeout'     => $timeout,
-				'redirection' => 0,
+				'headers'             => $headers,
+				'body'                => $body,
+				'timeout'             => $timeout,
+				'redirection'         => 0,
+				'reject_unsafe_urls'  => ! $private,
+				'limit_response_size' => $limit,
 			)
 		);
 
@@ -156,8 +179,13 @@ final class Client {
 					/* translators: %s: error message from the HTTP client. */
 					__( 'The remote site could not be reached: %s', 'jcore-silta' ),
 					$response->get_error_message()
-				)
+				),
+				array( 'status' => 502 )
 			);
+		}
+
+		if ( strlen( (string) wp_remote_retrieve_body( $response ) ) >= $limit ) {
+			return new WP_Error( 'jcore_silta_response_too_large', __( 'The remote response is too large. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 502 ) );
 		}
 
 		$code = (int) wp_remote_retrieve_response_code( $response );
@@ -170,7 +198,8 @@ final class Client {
 					/* translators: %s: URL the remote redirected to. */
 					__( 'The remote site redirected the request to %s. Pair the sites again using that address.', 'jcore-silta' ),
 					(string) wp_remote_retrieve_header( $response, 'location' )
-				)
+				),
+				array( 'status' => 502 )
 			);
 		}
 
@@ -181,13 +210,14 @@ final class Client {
 					/* translators: %d: HTTP status code. */
 					__( 'The remote site answered with something other than Silta data (HTTP %d). Check that the plugin is active there and that nothing blocks its REST API.', 'jcore-silta' ),
 					$code
-				)
+				),
+				array( 'status' => 502 )
 			);
 		}
 
 		if ( $code >= 400 ) {
 			return new WP_Error(
-				(string) ( $data['code'] ?? 'jcore_silta_remote_error' ),
+				is_string( $data['code'] ?? null ) && str_starts_with( $data['code'], 'jcore_silta_' ) ? $data['code'] : 'jcore_silta_remote_error',
 				(string) ( $data['message'] ?? __( 'The remote site returned an error.', 'jcore-silta' ) ),
 				array( 'status' => $code )
 			);

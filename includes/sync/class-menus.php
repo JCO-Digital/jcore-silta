@@ -26,6 +26,9 @@ final class Menus {
 	 * @return array<string, mixed>|null
 	 */
 	public static function state( int $id ): ?array {
+		if ( ! Content::syncable_type( 'nav_menu_item', true ) ) {
+			return null;
+		}
 		$menu = wp_get_nav_menu_object( $id );
 		if ( ! $menu instanceof \WP_Term ) {
 			return null;
@@ -52,7 +55,7 @@ final class Menus {
 				'target'      => $get( '_menu_item_target' ),
 				'attr_title'  => $post->post_excerpt,
 				'description' => $post->post_content,
-				'classes'     => implode( ' ', array_filter( (array) maybe_unserialize( $get( '_menu_item_classes' ) ) ) ),
+				'classes'     => implode( ' ', self::classes( $get( '_menu_item_classes' ) ) ),
 				'xfn'         => $get( '_menu_item_xfn' ),
 				'status'      => $post->post_status,
 				'meta'        => array_filter( $meta, array( Meta_Filter::class, 'synced' ), ARRAY_FILTER_USE_KEY ),
@@ -100,6 +103,9 @@ final class Menus {
 	 * @return array{id: int, warnings: string[]}|WP_Error
 	 */
 	public static function write( array $incoming, int $local_id, callable $wants, string $site ): array|WP_Error {
+		if ( ! Content::syncable_type( 'nav_menu_item', true ) ) {
+			return new WP_Error( 'jcore_silta_menu_type', __( 'Menu items cannot be synced on this site.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
 		$warnings = array();
 
 		if ( 0 === $local_id ) {
@@ -137,12 +143,13 @@ final class Menus {
 	 *
 	 * @param array<string, mixed> $snapshot Menu state from state().
 	 *
-	 * @return void
+	 * @return string[] Warnings for rejected values.
 	 */
-	public static function restore( array $snapshot ): void {
-		$menu_id = (int) $snapshot['id'];
+	public static function restore( array $snapshot ): array {
+		$warnings = array();
+		$menu_id  = (int) $snapshot['id'];
 		if ( ! wp_get_nav_menu_object( $menu_id ) ) {
-			return;
+			return $warnings;
 		}
 
 		wp_update_nav_menu_object( $menu_id, wp_slash( array( 'menu-name' => (string) $snapshot['name'] ) ) );
@@ -156,7 +163,7 @@ final class Menus {
 			$id = wp_update_nav_menu_item( $menu_id, 0, wp_slash( self::item_args( $item, (int) ( $new_ids[ $item['parent'] ] ?? 0 ) ) ) );
 			if ( ! is_wp_error( $id ) ) {
 				$new_ids[ $item['id'] ] = (int) $id;
-				self::write_item_meta( (int) $id, (array) ( $item['meta'] ?? array() ) );
+				$warnings               = array_merge( $warnings, self::write_item_meta( (int) $id, (array) ( $item['meta'] ?? array() ) ) );
 			}
 		}
 
@@ -170,6 +177,8 @@ final class Menus {
 			$locations[ $location ] = $menu_id;
 		}
 		set_theme_mod( 'nav_menu_locations', $locations );
+
+		return $warnings;
 	}
 
 	/**
@@ -193,6 +202,10 @@ final class Menus {
 		$local_ids = array();
 		$kept      = array();
 		foreach ( self::parents_first( $items ) as $item ) {
+			if ( ( in_array( $item['item_type'], array( 'post_type', 'post_type_archive' ), true ) && ! Content::syncable_type( $item['object'] ) ) || ( 'taxonomy' === $item['item_type'] && ! Content::syncable_taxonomy( $item['object'] ) ) ) {
+				$warnings[] = __( 'A menu item was skipped: its linked post type or taxonomy cannot be synced.', 'jcore-silta' );
+				continue;
+			}
 			if ( in_array( $item['item_type'], array( 'post_type', 'taxonomy' ), true ) && empty( $item['object_id'] ) ) {
 				$warnings[] = sprintf(
 					/* translators: %s: menu item title. */
@@ -223,7 +236,7 @@ final class Menus {
 
 			$local_ids[ $item['id'] ] = (int) $saved;
 			$kept[ (int) $saved ]     = true;
-			self::write_item_meta( (int) $saved, (array) ( $item['meta'] ?? array() ) );
+			$warnings                 = array_merge( $warnings, self::write_item_meta( (int) $saved, (array) ( $item['meta'] ?? array() ) ) );
 			Mapping::set( $site, 'post', (int) $item['id'], (int) $saved );
 		}
 
@@ -314,17 +327,18 @@ final class Menus {
 	private static function item_args( array $item, int $parent_id ): array {
 		return array(
 			'menu-item-object-id'   => (int) $item['object_id'],
-			'menu-item-object'      => (string) $item['object'],
+			'menu-item-object'      => sanitize_key( $item['object'] ),
 			'menu-item-parent-id'   => $parent_id,
 			'menu-item-position'    => (int) $item['position'],
-			'menu-item-type'        => (string) $item['item_type'],
+			'menu-item-type'        => sanitize_key( $item['item_type'] ),
 			'menu-item-title'       => (string) $item['title'],
-			'menu-item-url'         => (string) $item['url'],
+			'menu-item-url'         => esc_url_raw( $item['url'] ),
 			'menu-item-description' => (string) $item['description'],
 			'menu-item-attr-title'  => (string) $item['attr_title'],
-			'menu-item-target'      => (string) $item['target'],
-			'menu-item-classes'     => (string) $item['classes'],
-			'menu-item-xfn'         => (string) $item['xfn'],
+			'menu-item-target'      => sanitize_text_field( $item['target'] ),
+			// Core explode()s this on spaces and sanitizes each class itself.
+			'menu-item-classes'     => implode( ' ', array_map( 'sanitize_html_class', preg_split( '/\s+/', trim( $item['classes'] ), -1, PREG_SPLIT_NO_EMPTY ) ) ),
+			'menu-item-xfn'         => sanitize_text_field( $item['xfn'] ),
 			'menu-item-status'      => 'draft' === ( $item['status'] ?? '' ) ? 'draft' : 'publish',
 		);
 	}
@@ -335,11 +349,38 @@ final class Menus {
 	 * @param int                     $id   Item ID.
 	 * @param array<string, string[]> $meta Raw meta.
 	 *
-	 * @return void
+	 * @return string[] Warnings for rejected values.
 	 */
-	private static function write_item_meta( int $id, array $meta ): void {
+	private static function write_item_meta( int $id, array $meta ): array {
 		$current = array_filter( State::raw_meta( 'post', $id ), array( Meta_Filter::class, 'synced' ), ARRAY_FILTER_USE_KEY );
-		Meta_Writer::replace( 'post', $id, array_unique( array_merge( array_keys( $current ), array_keys( $meta ) ) ), $meta );
+		return Meta_Writer::replace( 'post', $id, array_unique( array_merge( array_keys( $current ), array_keys( $meta ) ) ), $meta );
+	}
+
+	/**
+	 * Reads menu classes without instantiating classes or accepting nested values.
+	 *
+	 * @param string $raw Raw classes meta.
+	 *
+	 * @return string[]
+	 */
+	private static function classes( string $raw ): array {
+		if ( ! Meta_Writer::valid_value( $raw ) ) {
+			return array();
+		}
+		$classes = $raw;
+		if ( Replacer::is_serialized( trim( $raw ) ) ) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize, WordPress.PHP.NoSilencedErrors.Discouraged -- Validated raw data; malformed legacy values return false and no classes are allowed.
+			$classes = @unserialize(
+				trim( $raw ),
+				array(
+					'allowed_classes' => false,
+					'max_depth'       => 64,
+				)
+			);
+		}
+		$classes = array_filter( (array) $classes, 'is_string' );
+
+		return array_values( array_filter( array_map( 'sanitize_html_class', $classes ) ) );
 	}
 
 	/**
@@ -401,7 +442,7 @@ final class Menus {
 			)
 		);
 
-		return array_filter( $posts, static fn( $post ) => $post instanceof \WP_Post );
+		return array_filter( $posts, static fn( $post ) => $post instanceof \WP_Post && Content::syncable_status( 'nav_menu_item', $post->post_status ) );
 	}
 
 	/**

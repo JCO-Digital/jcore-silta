@@ -15,8 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Replaces strings in plain text, JSON and PHP-serialized data.
  *
  * Serialized data is rewritten token by token, recomputing string lengths, and
- * is never unserialized, so objects in it are never instantiated and their
- * class names survive untouched.
+ * is never unserialized. Object, enum and reference tokens are refused.
  */
 final class Replacer {
 
@@ -35,6 +34,9 @@ final class Replacer {
 	 */
 	public function __construct( array $pairs = array() ) {
 		foreach ( $pairs as $pair ) {
+			if ( ! is_array( $pair ) || ! is_string( $pair[0] ?? null ) || ! is_string( $pair[1] ?? null ) ) {
+				continue;
+			}
 			$find = (string) ( $pair[0] ?? '' );
 			if ( '' === $find || isset( $this->pairs[ $find ] ) ) {
 				continue;
@@ -69,6 +71,9 @@ final class Replacer {
 		}
 
 		foreach ( $rules as $rule ) {
+			if ( ! is_array( $rule ) || ! is_string( $rule[0] ?? null ) || ! is_string( $rule[1] ?? null ) ) {
+				continue;
+			}
 			$pairs = array_merge( $pairs, self::variants( (string) $rule[0], (string) $rule[1] ) );
 		}
 
@@ -167,16 +172,21 @@ final class Replacer {
 	 * Replaces in a string, which may be serialized.
 	 *
 	 * @param string $value Value.
+	 * @param int    $depth Depth across nested serialized strings.
 	 *
 	 * @return string
+	 * @throws \UnexpectedValueException When serialized data is unsafe.
 	 */
-	public function string( string $value ): string {
-		if ( empty( $this->pairs ) || '' === $value ) {
+	public function string( string $value, int $depth = 0 ): string {
+		if ( $depth > 64 ) {
+			throw new \UnexpectedValueException( esc_html__( 'Serialized data exceeds the nesting limit.', 'jcore-silta' ) );
+		}
+		if ( '' === $value ) {
 			return $value;
 		}
 
-		if ( self::is_serialized( $value ) ) {
-			$result = $this->serialized( $value );
+		if ( self::is_serialized( trim( $value ) ) ) {
+			$result = $this->serialized( trim( $value ), $depth );
 			if ( null !== $result ) {
 				return $result;
 			}
@@ -196,25 +206,52 @@ final class Replacer {
 		// A cheap prefix test; the tokenizer validates the rest and falls back to
 		// plain replacement when the value turns out not to be serialized after all.
 		// Core's is_serialized() misses custom-serialized objects (`C:`).
-		return 1 === preg_match( '/^(?:N;|[bidsaOCE]:)/', $value ) && in_array( substr( $value, -1 ), array( ';', '}' ), true );
+		return 1 === preg_match( '/^(?:N;|[bidsSaOCERr]:)/', $value ) && in_array( substr( $value, -1 ), array( ';', '}' ), true );
 	}
 
 	/**
 	 * Rewrites serialized data token by token.
 	 *
-	 * @param string $data Serialized data.
+	 * @param string $data  Serialized data.
+	 * @param int    $depth Depth across nested serialized strings.
 	 *
 	 * @return string|null Null when the data is malformed.
+	 * @throws \UnexpectedValueException When serialized data is unsafe.
 	 */
-	private function serialized( string $data ): ?string {
-		$out = '';
-		$pos = 0;
+	private function serialized( string $data, int $depth ): ?string {
+		$out    = '';
+		$pos    = 0;
+		$unsafe = false;
 
-		if ( ! $this->token( $data, $pos, $out, 0 ) || strlen( $data ) !== $pos ) {
-			return null;
+		$valid = $this->token( $data, $pos, $out, $depth, $unsafe );
+
+		if ( $unsafe ) {
+			throw new \UnexpectedValueException( esc_html__( 'Serialized objects, enums and references cannot be synced.', 'jcore-silta' ) );
+		}
+		if ( $valid && strlen( $data ) === $pos ) {
+			return $out;
 		}
 
-		return $out;
+		// PHP accepts forms the tokenizer doesn't (`R:01`, trailing data…), so
+		// what it stops at may still hide an object from the checks above. Only
+		// data PHP itself can't read passes on as plain text.
+		if ( self::php_reads( $data ) ) {
+			throw new \UnexpectedValueException( esc_html__( 'Serialized data in an unsupported form cannot be synced.', 'jcore-silta' ) );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether PHP would unserialize a string, without instantiating anything.
+	 *
+	 * @param string $data Serialized-looking data.
+	 *
+	 * @return bool
+	 */
+	private static function php_reads( string $data ): bool {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize, WordPress.PHP.NoSilencedErrors.Discouraged -- Classes are not allowed; only checks whether the data parses.
+		return 'b:0;' === $data || false !== @unserialize( $data, array( 'allowed_classes' => false ) );
 	}
 
 	/**
@@ -224,11 +261,16 @@ final class Replacer {
 	 * @param int    $pos   Position, advanced past the value.
 	 * @param string $out   Output, appended to.
 	 * @param int    $depth Nesting depth.
+	 * @param bool   $unsafe Whether an unsafe token was found.
 	 *
 	 * @return bool False when the data is malformed.
+	 * @throws \UnexpectedValueException When the nesting limit is exceeded.
 	 */
-	private function token( string $data, int &$pos, string &$out, int $depth ): bool {
-		if ( $depth > 128 || ! isset( $data[ $pos ] ) ) {
+	private function token( string $data, int &$pos, string &$out, int $depth, bool &$unsafe ): bool {
+		if ( $depth > 64 ) {
+			throw new \UnexpectedValueException( esc_html__( 'Serialized data exceeds the nesting limit.', 'jcore-silta' ) );
+		}
+		if ( ! isset( $data[ $pos ] ) ) {
 			return false;
 		}
 
@@ -251,23 +293,57 @@ final class Replacer {
 				if ( false === $end || ':' !== ( $data[ $pos + 1 ] ?? '' ) ) {
 					return false;
 				}
-				$out .= substr( $data, $pos, $end - $pos + 1 );
-				$pos  = $end + 1;
+				$scalar = substr( $data, $pos, $end - $pos + 1 );
+				if ( ! preg_match( '/^(?:b:[01];|i:[+-]?\d+;|d:(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:E[+-]?\d+)?|NAN|-?INF);|[Rr]:[1-9]\d*;)$/i', $scalar ) ) {
+					return false;
+				}
+				$unsafe = $unsafe || in_array( $data[ $pos ], array( 'R', 'r' ), true );
+				$out   .= $scalar;
+				$pos    = $end + 1;
 
 				return true;
 
 			case 's':
-				if ( ! preg_match( '/\Gs:(\d+):"/', $data, $match, 0, $pos ) ) {
+			case 'S':
+				if ( ! preg_match( '/\G[sS]:(\d+):"/', $data, $match, 0, $pos ) ) {
 					return false;
 				}
 				$length = (int) $match[1];
 				$start  = $pos + strlen( $match[0] );
-				if ( '";' !== substr( $data, $start + $length, 2 ) ) {
+				if ( $length > strlen( $data ) - $start ) {
 					return false;
 				}
-				$replaced = $this->string( substr( $data, $start, $length ) );
+				$end    = $start + $length;
+				$string = substr( $data, $start, $length );
+				if ( 'S' === $data[ $pos ] ) {
+					// PHP also accepts hex-escaped string tokens inside arrays.
+					$string = '';
+					$end    = $start;
+					if ( $length > strlen( $data ) - $start ) {
+						return false;
+					}
+					for ( $i = 0; $i < $length; ++$i ) {
+						if ( ! isset( $data[ $end ] ) ) {
+							return false;
+						}
+						if ( '\\' === $data[ $end ] ) {
+							$hex = substr( $data, $end + 1, 2 );
+							if ( 2 !== strlen( $hex ) || ! ctype_xdigit( $hex ) ) {
+								return false;
+							}
+							$string .= chr( hexdec( $hex ) );
+							$end    += 3;
+						} else {
+							$string .= $data[ $end++ ];
+						}
+					}
+				}
+				if ( '";' !== substr( $data, $end, 2 ) ) {
+					return false;
+				}
+				$replaced = $this->string( $string, $depth + 1 );
 				$out     .= 's:' . strlen( $replaced ) . ':"' . $replaced . '";';
-				$pos      = $start + $length + 2;
+				$pos      = $end + 2;
 
 				return true;
 
@@ -278,13 +354,17 @@ final class Replacer {
 				$out .= $match[0];
 				$pos += strlen( $match[0] );
 
-				return $this->members( $data, $pos, $out, $depth, (int) $match[1] );
+				return $this->members( $data, $pos, $out, $depth, (int) $match[1], $unsafe );
 
 			case 'O':
 				if ( ! preg_match( '/\GO:(\d+):"/', $data, $match, 0, $pos ) ) {
 					return false;
 				}
-				$start = $pos + strlen( $match[0] );
+				$unsafe = true;
+				$start  = $pos + strlen( $match[0] );
+				if ( (int) $match[1] > strlen( $data ) - $start ) {
+					return false;
+				}
 				$class = substr( $data, $start, (int) $match[1] );
 				if ( ! preg_match( '/\G":(\d+):\{/', $data, $count, 0, $start + (int) $match[1] ) ) {
 					return false;
@@ -292,18 +372,27 @@ final class Replacer {
 				$out .= $match[0] . $class . $count[0];
 				$pos  = $start + (int) $match[1] + strlen( $count[0] );
 
-				return $this->members( $data, $pos, $out, $depth, (int) $count[1] );
+				return $this->members( $data, $pos, $out, $depth, (int) $count[1], $unsafe );
 
 			case 'C':
-				// Custom serialization: the payload is opaque, so copy it as it is.
+				// Validate the opaque payload without decoding it.
 				if ( ! preg_match( '/\GC:(\d+):"/', $data, $match, 0, $pos ) ) {
 					return false;
 				}
-				$start = $pos + strlen( $match[0] ) + (int) $match[1];
+				$unsafe = true;
+				$start  = $pos + strlen( $match[0] );
+				if ( (int) $match[1] > strlen( $data ) - $start ) {
+					return false;
+				}
+				$start += (int) $match[1];
 				if ( ! preg_match( '/\G":(\d+):\{/', $data, $length, 0, $start ) ) {
 					return false;
 				}
-				$end = $start + strlen( $length[0] ) + (int) $length[1];
+				$start += strlen( $length[0] );
+				if ( (int) $length[1] > strlen( $data ) - $start ) {
+					return false;
+				}
+				$end = $start + (int) $length[1];
 				if ( '}' !== ( $data[ $end ] ?? '' ) ) {
 					return false;
 				}
@@ -316,7 +405,12 @@ final class Replacer {
 				if ( ! preg_match( '/\GE:(\d+):"/', $data, $match, 0, $pos ) ) {
 					return false;
 				}
-				$end = $pos + strlen( $match[0] ) + (int) $match[1];
+				$unsafe = true;
+				$start  = $pos + strlen( $match[0] );
+				if ( (int) $match[1] > strlen( $data ) - $start ) {
+					return false;
+				}
+				$end = $start + (int) $match[1];
 				if ( '";' !== substr( $data, $end, 2 ) ) {
 					return false;
 				}
@@ -337,12 +431,13 @@ final class Replacer {
 	 * @param string $out   Output, appended to.
 	 * @param int    $depth Nesting depth.
 	 * @param int    $count Number of members.
+	 * @param bool   $unsafe Whether an unsafe token was found.
 	 *
 	 * @return bool
 	 */
-	private function members( string $data, int &$pos, string &$out, int $depth, int $count ): bool {
+	private function members( string $data, int &$pos, string &$out, int $depth, int $count, bool &$unsafe ): bool {
 		for ( $i = 0; $i < $count * 2; $i++ ) {
-			if ( ! $this->token( $data, $pos, $out, $depth + 1 ) ) {
+			if ( ! $this->token( $data, $pos, $out, $depth + 1, $unsafe ) ) {
 				return false;
 			}
 		}

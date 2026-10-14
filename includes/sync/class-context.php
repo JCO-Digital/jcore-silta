@@ -43,6 +43,13 @@ final class Context {
 	public array $objects = array();
 
 	/**
+	 * Validation errors for records omitted from the bundle.
+	 *
+	 * @var array<string, string>
+	 */
+	public array $errors = array();
+
+	/**
 	 * Options: status_mode, overrides, rules, job_refs.
 	 *
 	 * @var array<string, mixed>
@@ -100,22 +107,66 @@ final class Context {
 	 */
 	public function __construct( array $bundle, array $options, string $site ) {
 		$this->site       = $site;
+		$source           = is_array( $bundle['site'] ?? null ) ? $bundle['site'] : array();
 		$this->source     = array(
-			'home'    => (string) ( $bundle['site']['home'] ?? '' ),
-			'uploads' => (string) ( $bundle['site']['uploads'] ?? '' ),
+			'home'    => is_string( $source['home'] ?? null ) ? $source['home'] : '',
+			'uploads' => is_string( $source['uploads'] ?? null ) ? $source['uploads'] : '',
 		);
 		$this->options    = $options;
-		$this->stubs      = (array) ( $bundle['stubs'] ?? array() );
+		$this->stubs      = array();
 		$this->users      = array();
-		$this->acf_fields = (array) ( $bundle['acf_fields'] ?? array() );
+		$this->acf_fields = array();
 
 		foreach ( (array) ( $bundle['users'] ?? array() ) as $id => $user ) {
-			$this->users[ (int) $id ] = (array) $user;
-		}
-		foreach ( (array) ( $bundle['objects'] ?? array() ) as $record ) {
-			if ( is_array( $record ) && ! empty( $record['key'] ) ) {
-				$this->objects[ (string) $record['key'] ] = $record;
+			if ( ctype_digit( (string) $id ) && (int) $id > 0 && is_array( $user ) && is_string( $user['login'] ?? null ) && is_string( $user['email'] ?? null ) ) {
+				$this->users[ (int) $id ] = array_intersect_key( $user, array_flip( array( 'login', 'email' ) ) );
 			}
+		}
+		foreach ( (array) ( $bundle['acf_fields'] ?? array() ) as $key => $field ) {
+			if ( ! Acf::is_key( $key ) || ! is_array( $field ) ) {
+				continue;
+			}
+			foreach ( array( 'type', 'name', 'label', 'top', 'top_label' ) as $property ) {
+				if ( isset( $field[ $property ] ) && ! is_string( $field[ $property ] ) ) {
+					continue 2;
+				}
+			}
+			$this->acf_fields[ $key ] = $field;
+		}
+		foreach ( (array) ( $bundle['stubs'] ?? array() ) as $key => $stub ) {
+			if ( null === self::record_error( $stub, true ) && $key === $stub['key'] ) {
+				$this->stubs[ $key ] = ! empty( $stub['missing'] ) ? array_intersect_key( $stub, array_flip( array( 'key', 'missing' ) ) ) : $stub;
+			} else {
+				$this->errors[ 'invalid:stub:' . $key ] = __( 'Malformed reference stub was omitted from the bundle.', 'jcore-silta' );
+			}
+		}
+		$objects = $bundle['objects'] ?? null;
+		if ( ! is_array( $objects ) || ! array_is_list( $objects ) ) {
+			$this->errors['invalid:bundle'] = __( 'Bundle objects must be a list of records.', 'jcore-silta' );
+			$objects                        = array();
+		}
+		foreach ( $objects as $index => $record ) {
+			$error = self::record_error( $record );
+			if ( null !== $error ) {
+				$key = is_array( $record ) && is_string( $record['key'] ?? null ) && preg_match( '/^(post|term|menu):[1-9][0-9]*$/', $record['key'] ) ? $record['key'] : 'invalid:record:' . $index;
+				if ( isset( $this->objects[ $key ] ) || isset( $this->errors[ $key ] ) ) {
+					$key = 'invalid:record:' . $index;
+				}
+				$this->errors[ $key ] = $error;
+				continue;
+			}
+			if ( isset( $this->objects[ $record['key'] ] ) || isset( $this->errors[ $record['key'] ] ) ) {
+				$this->errors[ 'invalid:record:' . $index ] = __( 'Duplicate object key was omitted from the bundle.', 'jcore-silta' );
+				continue;
+			}
+			$record['meta'] = array_map( static fn( $values ): array => (array) $values, $record['meta'] ?? array() );
+			if ( 'menu' === $record['type'] ) {
+				foreach ( $record['items'] as &$item ) {
+					$item['meta'] = array_map( static fn( $values ): array => (array) $values, $item['meta'] ?? array() );
+				}
+				unset( $item );
+			}
+			$this->objects[ $record['key'] ] = $record;
 		}
 
 		$this->matcher  = new Matcher( $site, $this->source['home'] );
@@ -130,6 +181,186 @@ final class Context {
 	}
 
 	/**
+	 * Validates the fields consumed by matching, reference walkers and import.
+	 *
+	 * @param mixed $record Incoming record.
+	 * @param bool  $stub   Whether this is a reference stub.
+	 *
+	 * @return string|null Error, or null when the structure is valid.
+	 */
+	public static function record_error( mixed $record, bool $stub = false ): ?string {
+		$error = __( 'Malformed bundle record: invalid field types or object key.', 'jcore-silta' );
+		if ( ! is_array( $record ) || ! is_string( $record['key'] ?? null ) || ! preg_match( '/^(post|term|menu):[1-9][0-9]*$/', $record['key'] ) ) {
+			return $error;
+		}
+		if ( $stub && true === ( $record['missing'] ?? false ) ) {
+			return null;
+		}
+		if ( ! in_array( $record['type'] ?? null, array( 'post', 'term', 'menu' ), true ) || ! is_int( $record['id'] ?? null ) || $record['id'] <= 0 || $record['key'] !== Util::key( $record['type'], $record['id'] ) ) {
+			return $error;
+		}
+		$required = match ( $record['type'] ) {
+			'post' => array( 'post_type' ),
+			'term' => array( 'taxonomy', 'slug', 'name' ),
+			'menu' => array( 'slug', 'name' ),
+		};
+		if ( ! $stub ) {
+			$required[] = 'hash';
+			$required[] = 'post' === $record['type'] ? 'content' : ( 'term' === $record['type'] ? 'description' : 'name' );
+		}
+		foreach ( array_unique( array_merge( $required, array( 'title', 'guid', 'modified_gmt', 'path', 'post_name', 'status' ) ) ) as $key ) {
+			if ( ( in_array( $key, $required, true ) || array_key_exists( $key, $record ) ) && ! is_string( $record[ $key ] ?? null ) ) {
+				return $error;
+			}
+		}
+		foreach ( array( 'parent', 'depth', 'featured_image' ) as $key ) {
+			if ( isset( $record[ $key ] ) && ( ! is_int( $record[ $key ] ) || $record[ $key ] < 0 ) ) {
+				return $error;
+			}
+		}
+		foreach ( array( 'meta', 'meta_groups', 'group_labels', 'terms', 'fields', 'file' ) as $key ) {
+			if ( isset( $record[ $key ] ) && ! is_array( $record[ $key ] ) ) {
+				return $error;
+			}
+		}
+		if ( ! self::valid_meta( $record['meta'] ?? array() ) ) {
+			return $error;
+		}
+		foreach ( array( 'meta_groups', 'group_labels' ) as $map ) {
+			foreach ( $record[ $map ] ?? array() as $key => $value ) {
+				if ( ! is_string( $key ) || ! is_string( $value ) ) {
+					return $error;
+				}
+			}
+		}
+		if ( isset( $record['origins'] ) ) {
+			if ( ! is_array( $record['origins'] ) || ! array_is_list( $record['origins'] ) ) {
+				return $error;
+			}
+			foreach ( $record['origins'] as $origin ) {
+				if ( ! is_array( $origin ) || ! is_string( $origin['site'] ?? null ) || ! is_int( $origin['id'] ?? null ) || $origin['id'] <= 0 ) {
+					return $error;
+				}
+			}
+		}
+		if ( isset( $record['refs'] ) ) {
+			if ( ! is_array( $record['refs'] ) || ! array_is_list( $record['refs'] ) ) {
+				return $error;
+			}
+			foreach ( $record['refs'] as $ref ) {
+				if ( ! is_string( $ref ) || ! preg_match( '/^(post|term):[1-9][0-9]*$/', $ref ) ) {
+					return $error;
+				}
+			}
+		}
+		if ( isset( $record['language'] ) ) {
+			$language = $record['language'];
+			if ( ! is_array( $language ) || ! is_string( $language['lang'] ?? null ) || ! is_array( $language['translations'] ?? null ) ) {
+				return $error;
+			}
+			foreach ( $language['translations'] as $lang => $id ) {
+				if ( ! is_string( $lang ) || ! is_int( $id ) || $id <= 0 ) {
+					return $error;
+				}
+			}
+		}
+		foreach ( $record['terms'] ?? array() as $taxonomy => $ids ) {
+			if ( ! is_string( $taxonomy ) || ! is_array( $ids ) || ! array_is_list( $ids ) ) {
+				return $error;
+			}
+			foreach ( $ids as $id ) {
+				if ( ! is_int( $id ) || $id <= 0 ) {
+					return $error;
+				}
+			}
+		}
+		if ( 'post' === $record['type'] ) {
+			$fields = $record['fields'] ?? array();
+			foreach ( array_merge( State::FIELDS, array( 'post_date_gmt', 'post_mime_type' ) ) as $key ) {
+				if ( $stub || ( ! array_key_exists( $key, $fields ) && in_array( $key, array( 'page_template', 'post_format', 'sticky', 'post_mime_type' ), true ) ) ) {
+					continue;
+				}
+				$value = $fields[ $key ] ?? null;
+				$valid = match ( $key ) {
+					'post_author', 'post_parent' => is_int( $value ) && $value >= 0,
+					'menu_order' => is_int( $value ),
+					'sticky' => is_bool( $value ),
+					default => is_string( $value ),
+				};
+				if ( ! $valid ) {
+					return $error;
+				}
+			}
+		}
+		if ( 'menu' === $record['type'] && ! $stub ) {
+			if ( ! is_array( $record['items'] ?? null ) || ! array_is_list( $record['items'] ) || ! is_array( $record['locations'] ?? null ) || ! array_is_list( $record['locations'] ) ) {
+				return $error;
+			}
+			foreach ( $record['locations'] as $location ) {
+				if ( ! is_string( $location ) ) {
+					return $error;
+				}
+			}
+			$ids = array();
+			foreach ( $record['items'] as $item ) {
+				if ( ! is_array( $item ) || ! self::valid_meta( $item['meta'] ?? array() ) ) {
+					return $error;
+				}
+				foreach ( array( 'id', 'object_id', 'parent', 'position' ) as $key ) {
+					if ( ! is_int( $item[ $key ] ?? null ) || $item[ $key ] < ( 'id' === $key ? 1 : 0 ) ) {
+						return $error;
+					}
+				}
+				if ( isset( $ids[ $item['id'] ] ) ) {
+					return $error;
+				}
+				$ids[ $item['id'] ] = true;
+				foreach ( array( 'title', 'item_type', 'object', 'url', 'target', 'attr_title', 'description', 'classes', 'xfn', 'status' ) as $key ) {
+					if ( ! is_string( $item[ $key ] ?? null ) ) {
+						return $error;
+					}
+				}
+				if ( ! in_array( $item['item_type'], array( 'custom', 'post_type', 'taxonomy', 'post_type_archive' ), true ) ) {
+					return $error;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Checks a meta map's keys and raw string rows.
+	 *
+	 * @param mixed $meta Meta map.
+	 *
+	 * @return bool
+	 */
+	private static function valid_meta( mixed $meta ): bool {
+		if ( ! is_array( $meta ) ) {
+			return false;
+		}
+		foreach ( $meta as $key => $values ) {
+			if ( ! is_string( $key ) || '' === $key || str_contains( $key, "\0" ) ) {
+				return false;
+			}
+			if ( is_string( $values ) ) {
+				continue;
+			}
+			if ( ! is_array( $values ) || ! array_is_list( $values ) ) {
+				return false;
+			}
+			foreach ( $values as $value ) {
+				if ( ! is_string( $value ) ) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Finds the local copy of an object, honouring a manual override.
 	 *
 	 * @param array<string, mixed> $record Object.
@@ -137,6 +368,9 @@ final class Context {
 	 * @return array{id: int, method: string}|null
 	 */
 	public function match( array $record ): ?array {
+		if ( ( 'post' === $record['type'] && ! Content::syncable_type( $record['post_type'] ) ) || ( 'term' === $record['type'] && ! Content::syncable_taxonomy( $record['taxonomy'] ) ) ) {
+			return null;
+		}
 		$override = $this->options['overrides'][ $record['key'] ] ?? null;
 		if ( 'create' === $override ) {
 			return null;
@@ -148,7 +382,9 @@ final class Context {
 			);
 		}
 
-		return $this->matcher->match( $record );
+		$match = $this->matcher->match( $record );
+
+		return null !== $match && $this->override_ok( $record, $match['id'] ) ? $match : null;
 	}
 
 	/**
@@ -182,8 +418,13 @@ final class Context {
 
 		$info = $this->objects[ $key ] ?? $this->stubs[ $key ] ?? null;
 		if ( is_array( $info ) && empty( $info['missing'] ) ) {
+			if ( ( 'post' === $info['type'] && ! Content::syncable_type( $info['post_type'] ) ) || ( 'term' === $info['type'] && ! Content::syncable_taxonomy( $info['taxonomy'] ) ) ) {
+				$this->resolved[ $key ] = null;
+
+				return null;
+			}
 			$match = isset( $this->objects[ $key ] ) ? $this->match( $info ) : $this->matcher->match( $info );
-			if ( null !== $match ) {
+			if ( null !== $match && $this->override_ok( $info, $match['id'] ) ) {
 				$this->resolved[ $key ] = $match['id'];
 
 				return $match['id'];
@@ -329,7 +570,7 @@ final class Context {
 		if ( 'post' === $record['type'] ) {
 			$post = get_post( $id );
 
-			return $post instanceof \WP_Post && $post->post_type === $record['post_type'];
+			return $post instanceof \WP_Post && $post->post_type === $record['post_type'] && Content::syncable_type( $post->post_type ) && Content::syncable_status( $post->post_type, $post->post_status );
 		}
 
 		$term = get_term( $id );
@@ -368,12 +609,14 @@ final class Context {
 	 */
 	private function exists( string $kind, int $id ): bool {
 		if ( 'term' === $kind ) {
-			return get_term( $id ) instanceof \WP_Term;
+			$term = get_term( $id );
+
+			return $term instanceof \WP_Term && Content::syncable_taxonomy( $term->taxonomy );
 		}
 
 		$post = get_post( $id );
 
-		return $post instanceof \WP_Post && 'trash' !== $post->post_status;
+		return $post instanceof \WP_Post && Content::syncable_type( $post->post_type ) && Content::syncable_status( $post->post_type, $post->post_status );
 	}
 
 	/**
@@ -421,7 +664,17 @@ final class Context {
 			return $record;
 		}
 
-		$text = static fn( $value ) => is_string( $value ) ? $replacer->string( $value ) : $value;
+		$text = static function ( $value ) use ( $replacer ) {
+			if ( ! is_string( $value ) ) {
+				return $value;
+			}
+			try {
+				return $replacer->string( $value );
+			} catch ( \UnexpectedValueException $e ) {
+				// Keep unsafe raw meta intact so Meta_Writer skips the key and reports it.
+				return $value;
+			}
+		};
 
 		if ( 'post' === $record['type'] ) {
 			foreach ( array( 'post_title', 'post_excerpt' ) as $field ) {

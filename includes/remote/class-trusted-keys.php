@@ -109,20 +109,25 @@ final class Trusted_Keys {
 			return new WP_Error( 'jcore_silta_bad_key', __( 'The public key is not valid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		$uuid = sanitize_text_field( (string) ( $site['uuid'] ?? '' ) );
+		$uuid = strtolower( sanitize_text_field( (string) ( $site['uuid'] ?? '' ) ) );
 		if ( ! wp_is_uuid( $uuid ) ) {
 			return new WP_Error( 'jcore_silta_bad_site', __( 'The site ID is not valid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		// A site pairing again (new key after a refresh) replaces its old key.
-		foreach ( $data['keys'] as $fingerprint => $key ) {
-			if ( $key['site'] === $uuid ) {
-				unset( $data['keys'][ $fingerprint ] );
+		$fingerprint = Signature::fingerprint( $raw );
+		foreach ( $data['keys'] as $existing_fingerprint => $existing ) {
+			if ( ( strtolower( (string) $existing['site'] ) === $uuid && $existing_fingerprint !== $fingerprint && ! empty( $existing['enabled'] ) ) || ( $existing_fingerprint === $fingerprint && strtolower( (string) $existing['site'] ) !== $uuid ) ) {
+				return new WP_Error( 'jcore_silta_key_exists', __( 'This site already has a trusted key. Revoke the old key before pairing a different key.', 'jcore-silta' ), array( 'status' => 409 ) );
+			}
+		}
+		// Disabled inherited keys may be replaced after a clone is reviewed.
+		foreach ( $data['keys'] as $existing_fingerprint => $existing ) {
+			if ( strtolower( (string) $existing['site'] ) === $uuid && $existing_fingerprint !== $fingerprint ) {
+				unset( $data['keys'][ $existing_fingerprint ] );
 			}
 		}
 
-		$fingerprint = Signature::fingerprint( $raw );
-		$key         = array(
+		$key = array(
 			'fingerprint' => $fingerprint,
 			'public'      => $public_key,
 			'label'       => '' !== $pending['label'] ? $pending['label'] : sanitize_text_field( (string) ( $site['name'] ?? '' ) ),
@@ -255,6 +260,7 @@ final class Trusted_Keys {
 
 		unset( $data['keys'][ $fingerprint ] );
 		self::save( $data );
+		delete_transient( 'jcore_silta_key_used_' . $fingerprint );
 
 		return true;
 	}
@@ -267,13 +273,12 @@ final class Trusted_Keys {
 	 * @return void
 	 */
 	public static function touch( string $fingerprint ): void {
-		$data = self::load();
-		if ( empty( $data['keys'][ $fingerprint ] ) || (int) $data['keys'][ $fingerprint ]['last_used'] > time() - MINUTE_IN_SECONDS ) {
+		$key = self::get( $fingerprint );
+		if ( null === $key || empty( $key['enabled'] ) || (int) $key['last_used'] > time() - MINUTE_IN_SECONDS ) {
 			return;
 		}
 
-		$data['keys'][ $fingerprint ]['last_used'] = time();
-		self::save( $data );
+		set_transient( 'jcore_silta_key_used_' . $fingerprint, time(), YEAR_IN_SECONDS );
 	}
 
 	/**
@@ -319,6 +324,10 @@ final class Trusted_Keys {
 			if ( (int) ( $token['expires'] ?? 0 ) < time() - DAY_IN_SECONDS ) {
 				unset( $data['tokens'][ $hash ] );
 			}
+		}
+
+		foreach ( $data['keys'] as $fingerprint => $key ) {
+			$data['keys'][ $fingerprint ]['last_used'] = max( (int) ( $key['last_used'] ?? 0 ), (int) get_transient( 'jcore_silta_key_used_' . $fingerprint ) );
 		}
 
 		return $data;

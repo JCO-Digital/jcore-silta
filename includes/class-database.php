@@ -19,7 +19,7 @@ final class Database {
 	/**
 	 * Schema version. Bump it whenever a CREATE TABLE below changes.
 	 */
-	private const DB_VERSION = '1.0';
+	private const DB_VERSION = '1.2';
 
 	/**
 	 * Option holding the installed schema version.
@@ -39,6 +39,8 @@ final class Database {
 		'jobs'      => 'jcore_silta_jobs',
 		'items'     => 'jcore_silta_job_items',
 		'snapshots' => 'jcore_silta_snapshots',
+		'nonces'    => 'jcore_silta_nonces',
+		'transfers' => 'jcore_silta_transfers',
 	);
 
 	/**
@@ -74,6 +76,7 @@ final class Database {
 		set_transient( self::LOCK, 1, MINUTE_IN_SECONDS );
 
 		self::install();
+		delete_option( 'jcore_silta_media_transfers' );
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION, true );
 
 		delete_transient( self::LOCK );
@@ -94,6 +97,29 @@ final class Database {
 		$jobs      = self::table( 'jobs' );
 		$items     = self::table( 'items' );
 		$snapshots = self::table( 'snapshots' );
+		$nonces    = self::table( 'nonces' );
+		$transfers = self::table( 'transfers' );
+
+		dbDelta(
+			"CREATE TABLE {$transfers} (
+transfer char(36) NOT NULL,
+peer char(36) NOT NULL,
+created bigint(20) unsigned NOT NULL,
+manifest longtext NOT NULL,
+PRIMARY KEY  (transfer),
+KEY peer (peer),
+KEY created (created)
+) {$charset};"
+		);
+
+		dbDelta(
+			"CREATE TABLE {$nonces} (
+nonce char(64) NOT NULL,
+expires bigint(20) unsigned NOT NULL,
+PRIMARY KEY  (nonce),
+KEY expires (expires)
+) {$charset};"
+		);
 
 		dbDelta(
 			"CREATE TABLE {$map} (

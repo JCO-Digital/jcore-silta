@@ -42,12 +42,21 @@ final class Local extends Endpoint {
 	private string $peer;
 
 	/**
+	 * Whether this endpoint is used by the local initiator. Never set from request data.
+	 *
+	 * @var bool
+	 */
+	private bool $initiator;
+
+	/**
 	 * Creates the endpoint.
 	 *
-	 * @param string $peer UUID of the other site: the source, when this site is the target.
+	 * @param string $peer      UUID of the other site: the source, when this site is the target.
+	 * @param bool   $initiator Whether the local runner owns this endpoint.
 	 */
-	public function __construct( string $peer ) {
-		$this->peer = $peer;
+	public function __construct( string $peer, bool $initiator = false ) {
+		$this->peer      = $peer;
+		$this->initiator = $initiator;
 	}
 
 	/**
@@ -97,7 +106,11 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_read( array $args ): array|WP_Error {
-		return Media::read( (int) ( $args['id'] ?? 0 ), (string) ( $args['path'] ?? '' ), (int) ( $args['offset'] ?? 0 ), (int) ( $args['length'] ?? 0 ) );
+		if ( ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_int( $args['length'] ?? null ) ) {
+			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+
+		return Media::read( $args['id'], $args['path'], $args['offset'], $args['length'] );
 	}
 
 	/**
@@ -128,7 +141,10 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_prepare( array $args ): array|WP_Error {
-		$ctx    = $this->context( $args, false );
+		$ctx = $this->context( $args, false );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
 		$record = reset( $ctx->objects );
 		if ( false === $record || 'attachment' !== ( $record['post_type'] ?? '' ) ) {
 			return new WP_Error( 'jcore_silta_not_attachment', __( 'Not an attachment.', 'jcore-silta' ), array( 'status' => 400 ) );
@@ -136,7 +152,7 @@ final class Local extends Endpoint {
 
 		$match = $ctx->match( $record );
 
-		return Media::prepare( $record, (int) ( $match['id'] ?? 0 ) );
+		return Media::prepare( $record, (int) ( $match['id'] ?? 0 ), $this->peer );
 	}
 
 	/**
@@ -145,7 +161,11 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_write( array $args ): array|WP_Error {
-		return Media::write( (string) ( $args['transfer'] ?? '' ), (string) ( $args['path'] ?? '' ), (int) ( $args['offset'] ?? 0 ), (string) ( $args['data'] ?? '' ) );
+		if ( ! is_string( $args['transfer'] ?? null ) || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_string( $args['data'] ?? null ) || ! is_int( $args['id'] ?? null ) || $args['id'] < 1 ) {
+			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+
+		return Media::write( $args['transfer'], $args['path'], $args['offset'], $args['data'], $this->peer, $args['id'] );
 	}
 
 	/**
@@ -160,12 +180,21 @@ final class Local extends Endpoint {
 			return new WP_Error( 'jcore_silta_no_job', __( 'The import has no job ID.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		Jobs::ensure_target( $job, $this->peer, (array) ( $options['job_meta'] ?? array() ) );
+		$stored = $this->initiator ? Jobs::get( $job ) : Jobs::ensure_target( $job, $this->peer, (array) ( $options['job_meta'] ?? array() ) );
+		if ( is_wp_error( $stored ) ) {
+			return $stored;
+		}
+		if ( $this->initiator && ( null === $stored || 'initiator' !== $stored['role'] || $this->peer !== $stored['remote_site'] || ! Jobs::user_permission( $stored ) ) ) {
+			return new WP_Error( 'jcore_silta_not_yours', __( 'That sync does not belong to you.', 'jcore-silta' ), array( 'status' => 403 ) );
+		}
 
 		$ctx     = $this->context( $args, false );
 		$results = ( new Importer( $ctx, $job ) )->run( $options );
-		if ( empty( $options['fixup'] ) ) {
-			Jobs::record_results( $job, $results );
+		if ( ! $this->initiator && empty( $options['fixup'] ) ) {
+			$recorded = Jobs::record_results( $job, $results, $this->peer );
+			if ( is_wp_error( $recorded ) ) {
+				return $recorded;
+			}
 		}
 
 		return array( 'results' => $results );
@@ -207,7 +236,7 @@ final class Local extends Endpoint {
 		if ( null === $job ) {
 			return new WP_Error( 'jcore_silta_no_job', __( 'This site has no record of that sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
-		if ( 'initiator' !== $job['role'] && $job['remote_site'] !== $this->peer ) {
+		if ( $this->initiator ? ( 'initiator' !== $job['role'] || $job['remote_site'] !== $this->peer || ! Jobs::user_permission( $job ) ) : ! Jobs::target_permission( $job, $this->peer ) ) {
 			return new WP_Error( 'jcore_silta_not_yours', __( 'That sync came from another site.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
