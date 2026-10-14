@@ -76,10 +76,36 @@ final class Database {
 		set_transient( self::LOCK, 1, MINUTE_IN_SECONDS );
 
 		self::install();
-		delete_option( 'jcore_silta_media_transfers' );
-		update_option( self::DB_VERSION_OPTION, self::DB_VERSION, true );
+
+		// A failed CREATE leaves the version behind, so the next load retries.
+		if ( self::complete() ) {
+			delete_option( 'jcore_silta_media_transfers' );
+			update_option( self::DB_VERSION_OPTION, self::DB_VERSION, true );
+		}
 
 		delete_transient( self::LOCK );
+	}
+
+	/**
+	 * Whether every table exists.
+	 *
+	 * @return bool
+	 */
+	private static function complete(): bool {
+		global $wpdb;
+
+		// Querying each table works whatever case the server folds names to.
+		$suppressed = $wpdb->suppress_errors();
+		$complete   = true;
+		foreach ( array_keys( self::TABLES ) as $name ) {
+			if ( false === $wpdb->query( $wpdb->prepare( 'SELECT 1 FROM %i LIMIT 0', self::table( $name ) ) ) ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema check during upgrade.
+				$complete = false;
+				break;
+			}
+		}
+		$wpdb->suppress_errors( $suppressed );
+
+		return $complete;
 	}
 
 	/**

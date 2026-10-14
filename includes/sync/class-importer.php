@@ -288,7 +288,7 @@ final class Importer {
 			if ( $attachment && isset( $changed['file'] ) ) {
 				$extra = $this->replace_file( $local_id, $incoming, is_string( $options['transfers'][ $key ] ?? null ) ? $options['transfers'][ $key ] : '', $record );
 				if ( is_wp_error( $extra ) ) {
-					return self::failed( $extra->get_error_message() );
+					return self::failed( $extra->get_error_message() ) + array( 'resend' => Media::resend( $extra ) );
 				}
 			}
 
@@ -301,7 +301,7 @@ final class Importer {
 			if ( $attachment ) {
 				$created = $this->create_attachment( $incoming, is_string( $options['transfers'][ $key ] ?? null ) ? $options['transfers'][ $key ] : '', $record );
 				if ( is_wp_error( $created ) ) {
-					return self::failed( $created->get_error_message() );
+					return self::failed( $created->get_error_message() ) + array( 'resend' => Media::resend( $created ) );
 				}
 				list( $local_id, $extra ) = $created;
 			} else {

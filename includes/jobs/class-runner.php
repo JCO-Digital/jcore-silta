@@ -380,7 +380,7 @@ final class Runner {
 
 			$result = match ( $phase ) {
 				'media' => $this->media_step( $state, $deadline ),
-				'import' => $this->import_batch(),
+				'import' => $this->media_import_batch( $state, $deadline ),
 				'fixup' => $this->fixup_batch(),
 				'trash' => $this->trash(),
 				default => 'done',
@@ -863,6 +863,15 @@ final class Runner {
 				)
 			);
 			if ( is_wp_error( $written ) ) {
+				if ( 'jcore_silta_transfer_expired' === $written->get_error_code() ) {
+					unset( $state['media'] );
+					$item = Jobs::item( (int) $this->job['id'], (int) $cursor['item'] );
+					if ( null !== $item ) {
+						$this->resend( $item, $written->get_error_message() );
+					}
+
+					return false;
+				}
 				$state['media'] = $cursor;
 
 				return $written;
@@ -896,6 +905,25 @@ final class Runner {
 	}
 
 	/**
+	 * Imports the next batch, after sending the files of any attachment the
+	 * target asked to receive again (its transfer expired or was lost).
+	 *
+	 * @param array<string, mixed> $state    Job state.
+	 * @param float                $deadline Microtime to stop at.
+	 *
+	 * @return bool|WP_Error True when no item is left.
+	 */
+	private function media_import_batch( array &$state, float $deadline ): bool|WP_Error {
+		if ( isset( $state['media'] ) || null !== $this->next_attachment() ) {
+			$result = $this->media_step( $state, $deadline );
+
+			return is_wp_error( $result ) ? $result : false;
+		}
+
+		return $this->import_batch();
+	}
+
+	/**
 	 * Imports the next batch of items.
 	 *
 	 * @return bool|WP_Error True when no item is left.
@@ -919,7 +947,53 @@ final class Runner {
 			return true;
 		}
 
+		// Attachments sort before posts. A batch ends with its last attachment,
+		// so no post imports before an attachment it uses has its files, even
+		// when that attachment's files have to be sent again.
+		$attachments = array_keys( array_column( $items, 'subtype' ), 'attachment', true );
+		if ( ! empty( $attachments ) ) {
+			$items = array_slice( $items, 0, max( $attachments ) + 1 );
+		}
+
 		return $this->import( $items, false );
+	}
+
+	/**
+	 * Queues an attachment's files to be sent again after the target lost
+	 * them. Twice at most, then the item fails, so a host that keeps losing
+	 * transfers (uploads not shared between its servers) can't loop.
+	 *
+	 * @param array<string, mixed> $item    Item.
+	 * @param string               $message Why the files are needed again.
+	 *
+	 * @return bool Whether the files will be sent again.
+	 */
+	private function resend( array $item, string $message ): bool {
+		$resends = (int) ( $item['result']['resends'] ?? 0 );
+		if ( $resends >= 2 ) {
+			Jobs::update_item(
+				(int) $item['id'],
+				array(
+					'status' => 'failed',
+					'result' => array(
+						'status'  => 'failed',
+						'error'   => $message,
+						'resends' => $resends,
+					),
+				)
+			);
+
+			return false;
+		}
+		Jobs::update_item(
+			(int) $item['id'],
+			array(
+				'status' => 'planned',
+				'result' => array( 'resends' => $resends + 1 ),
+			)
+		);
+
+		return true;
 	}
 
 	/**
@@ -1071,6 +1145,12 @@ final class Runner {
 				$result['fixed']  = true;
 				$result['action'] = $item['result']['action'] ?? ( $result['action'] ?? '' );
 			}
+
+			// A lost transfer sends the files again instead of failing the
+			// attachment; media_import_batch() sends them before importing.
+			if ( ! $fixup && ! empty( $result['resend'] ) && $this->resend( $item, (string) ( $result['error'] ?? '' ) ) ) {
+				continue;
+			}
 			$result['transfer'] = $item['result']['transfer'] ?? null;
 
 			Jobs::update_item(
@@ -1178,7 +1258,7 @@ final class Runner {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such item.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 		if ( ! $this->can_import_item( $item ) ) {
-			return new WP_Error( 'jcore_silta_forbidden', __( 'You do not have permission to sync this object or its taxonomies.', 'jcore-silta' ), array( 'status' => 403 ) );
+			return new WP_Error( 'jcore_silta_forbidden', __( 'You do not have permission to sync this object with its status, author or terms.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
 		return true;
@@ -1198,21 +1278,53 @@ final class Runner {
 		if ( 'push' === $this->job['direction'] ) {
 			return self::can_export( (string) $item['object_type'], (int) $item['source_id'] );
 		}
+		// The same bundle (with its user map) and options the import sends, so
+		// matching, authors and status come out as the importer sees them.
 		$record = (array) ( $item['payload']['object'] ?? array() );
-		$ctx    = new Context(
-			array(
-				'site'    => $this->job['state']['source_site'] ?? array(),
-				'objects' => array( $record ),
-			),
-			array( 'overrides' => array( $item['key'] => $item['override']['target'] ?? null ) ),
-			(string) $this->connection['site']
-		);
+		$ctx    = new Context( $this->bundle( array( $item ) ), $this->plan_options( array( $item ) ), (string) $this->connection['site'] );
 		if ( ! isset( $ctx->objects[ $item['key'] ] ) ) {
 			return false;
 		}
 		$match = $ctx->match( $record );
 		if ( ! self::can_import_record( $record, null === $match ? null : (int) $match['id'] ) ) {
 			return false;
+		}
+		if ( 'post' === $record['type'] ) {
+			$post     = null === $match ? null : get_post( (int) $match['id'] );
+			$local    = $post instanceof \WP_Post ? array(
+				'fields' => array(
+					'post_status' => $post->post_status,
+					'post_author' => (int) $post->post_author,
+				),
+			) : null;
+			$incoming = $ctx->transform( $record );
+			$status   = $ctx->status( $incoming, $local );
+
+			// Fields the import leaves alone: unselected sections of an existing
+			// post, and an attachment's status (new ones are always inherit).
+			$selection = ! empty( $this->job['options']['diff'] ) && is_array( $item['sections'] ) ? $item['sections'] : null;
+			$written   = static fn( string $field ): bool => null === $local || null === $selection || in_array( 'fields', $selection, true ) || in_array( 'fields.' . $field, $selection, true );
+			if ( 'attachment' === $record['post_type'] ) {
+				$status = null === $local ? 'inherit' : $local['fields']['post_status'];
+			} elseif ( ! $written( 'post_status' ) ) {
+				$status = $local['fields']['post_status'];
+			}
+			// WordPress publishes a scheduled post whose date has passed, and
+			// schedules a published one dated in the future.
+			$date = $written( 'post_date' ) ? (string) ( $incoming['fields']['post_date_gmt'] ?? '' ) : (string) $post?->post_date_gmt;
+			$time = '' !== $date && ! str_starts_with( $date, '0000' ) ? strtotime( $date . ' UTC' ) : false;
+			if ( false !== $time && 'future' === $status && $time <= time() ) {
+				$status = 'publish';
+			} elseif ( false !== $time && 'publish' === $status && $time > time() ) {
+				$status = 'future';
+			}
+			if ( ! $written( 'post_author' ) ) {
+				$incoming['fields']['post_author'] = 0;
+			}
+
+			if ( ! self::can_write_post( $incoming, $local, $status ) ) {
+				return false;
+			}
 		}
 		// Pin the checked match for this request, including an explicit create,
 		// so earlier objects in this batch cannot change the matching decision.
@@ -1259,6 +1371,41 @@ final class Runner {
 	}
 
 	/**
+	 * Whether the current user may give a pulled post the status and author
+	 * the import would write, checked the way the post editor checks them.
+	 *
+	 * @param array<string, mixed>      $incoming Transformed incoming post.
+	 * @param array<string, mixed>|null $local    Current local state, or null when new.
+	 * @param string                    $status   Status the import would set.
+	 *
+	 * @return bool
+	 */
+	private static function can_write_post( array $incoming, ?array $local, string $status ): bool {
+		$type = get_post_type_object( (string) ( $incoming['post_type'] ?? '' ) );
+		if ( null === $type ) {
+			return false;
+		}
+
+		// Publishing, scheduling or making private needs publish_posts, unless
+		// the post already has that status (then edit_post covered it).
+		$before = (string) ( $local['fields']['post_status'] ?? '' );
+		if ( in_array( $status, array( 'publish', 'future', 'private' ), true ) && $status !== $before && ! current_user_can( $type->cap->publish_posts ) ) {
+			return false;
+		}
+
+		// An unmatched author leaves an existing post's author alone, and makes
+		// the current user the author of a new one.
+		$me     = get_current_user_id();
+		$author = (int) ( $incoming['fields']['post_author'] ?? 0 );
+		$author = $author > 0 ? $author : ( null === $local ? $me : (int) $local['fields']['post_author'] );
+		if ( $author !== $me && $author !== (int) ( $local['fields']['post_author'] ?? $me ) && ! current_user_can( $type->cap->edit_others_posts ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Excludes denied items and records a clear per-item error.
 	 *
 	 * @param array<int, array<string, mixed>> $items Items with payloads.
@@ -1271,7 +1418,7 @@ final class Runner {
 			if ( $this->can_import_item( $item ) ) {
 				$allowed[] = $item;
 			} else {
-				$this->deny_item( $item, __( 'You do not have permission to sync this object or its taxonomies.', 'jcore-silta' ) );
+				$this->deny_item( $item, __( 'You do not have permission to sync this object with its status, author or terms.', 'jcore-silta' ) );
 			}
 		}
 

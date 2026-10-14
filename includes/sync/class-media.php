@@ -222,13 +222,17 @@ final class Media {
 			}
 		}
 
-		if ( ! self::lock() ) {
+		if ( ! self::lock( $peer, true ) ) {
 			return self::busy();
 		}
 		try {
-			$transfers = (array) get_option( self::OPTION, array() );
-			$open      = count( array_filter( $transfers, static fn( array $manifest ): bool => $manifest['peer'] === $peer ) );
-			if ( $open >= max( 1, (int) apply_filters( 'jcore_silta_media_max_open_transfers', 1000, $peer ) ) ) {
+			$open = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Indexed peer admission count under a per-peer lock.
+				$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE peer = %s', Database::table( 'transfers' ), $peer )
+			);
+			if ( null === $open ) {
+				return self::busy();
+			}
+			if ( (int) $open >= max( 1, (int) apply_filters( 'jcore_silta_media_max_open_transfers', 10000, $peer ) ) ) {
 				return self::limit_error();
 			}
 
@@ -253,7 +257,7 @@ final class Media {
 				}
 			}
 
-			$manifest               = array(
+			$manifest = array(
 				'transfer' => $transfer,
 				'peer'     => $peer,
 				'record'   => self::record_key( $record ),
@@ -264,8 +268,17 @@ final class Media {
 				'files'    => array_values( $files ),
 				'created'  => time(),
 			);
-			$transfers[ $transfer ] = $manifest;
-			if ( ! update_option( self::OPTION, $transfers, false ) ) {
+			$saved    = $wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- One server-owned manifest per transfer.
+				Database::table( 'transfers' ),
+				array(
+					'transfer' => $transfer,
+					'peer'     => $peer,
+					'created'  => $manifest['created'],
+					'manifest' => wp_json_encode( $manifest ),
+				),
+				array( '%s', '%s', '%d', '%s' )
+			);
+			if ( 1 !== $saved ) {
 				self::delete_dir( $dir );
 				return self::busy();
 			}
@@ -305,7 +318,7 @@ final class Media {
 			return $manifest;
 		}
 		if ( ! self::lock( $transfer ) ) {
-			return self::busy();
+			return self::locked_out( $transfer );
 		}
 		try {
 			$manifest = self::manifest( $transfer, $peer, $record_id );
@@ -327,8 +340,17 @@ final class Media {
 			}
 			clearstatcache( true, $tmp );
 			$received = is_file( $tmp ) ? (int) filesize( $tmp ) : 0;
-			if ( $offset < 0 || $offset > $received || $received > $entry['size'] || strlen( $data ) > 4 * (int) ceil( 16 * MB_IN_BYTES / 3 ) ) {
+			if ( $offset < 0 || $received > $entry['size'] || strlen( $data ) > 4 * (int) ceil( 16 * MB_IN_BYTES / 3 ) ) {
 				return self::invalid_chunk();
+			}
+			// The staged file is behind the sender (lost or cut short): nothing
+			// is written, and the sender resends from what is here.
+			if ( $offset > $received ) {
+				return array(
+					'received' => $received,
+					'complete' => false,
+					'resync'   => true,
+				);
 			}
 			$bytes = base64_decode( $data, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Binary over JSON.
 			if ( false === $bytes || strlen( $bytes ) > 16 * MB_IN_BYTES || strlen( $bytes ) > $entry['size'] - $offset || ( '' === $bytes && $offset < $entry['size'] ) ) {
@@ -378,7 +400,7 @@ final class Media {
 			return $manifest;
 		}
 		if ( ! self::lock( $transfer ) ) {
-			return self::busy();
+			return self::locked_out( $transfer );
 		}
 		try {
 			$manifest = self::manifest( $transfer, $peer, (int) ( $record['id'] ?? 0 ) );
@@ -430,12 +452,17 @@ final class Media {
 			if ( 1 !== $deleted ) {
 				return self::missing_transfer();
 			}
+			$published = array();
 			foreach ( $manifest['files'] as $entry ) {
 				$target = self::upload_path( $entry['target'] );
 				$tmp    = self::staged_path( $transfer, $entry['source'] );
-				if ( null === $target || null === $tmp || ! wp_mkdir_p( dirname( $target ) ) || null === self::upload_path( $entry['target'] ) || file_exists( $target ) || ! rename( $tmp, $target ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- Same filesystem.
+				if ( null === $target || null === $tmp || ! wp_mkdir_p( dirname( $target ) ) || null === self::upload_path( $entry['target'] ) || ! self::publish( $tmp, $target ) ) {
+					// Nothing will own the files already moved: take them back out.
+					array_map( 'wp_delete_file', $published );
+
 					return new WP_Error( 'jcore_silta_move', __( 'A file could not be moved into the uploads folder. Run the sync again.', 'jcore-silta' ), array( 'status' => 500 ) );
 				}
+				$published[] = $target;
 			}
 			self::delete_dir( (string) self::staged_path( $transfer ) );
 
@@ -515,36 +542,98 @@ final class Media {
 	 * @return void
 	 */
 	public static function cleanup(): void {
-		if ( ! self::lock() ) {
+		global $wpdb;
+
+		delete_option( 'jcore_silta_media_transfers' );
+		$expired = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Indexed expiry lookup.
+			$wpdb->prepare( 'SELECT transfer FROM %i WHERE created < %d', Database::table( 'transfers' ), time() - DAY_IN_SECONDS )
+		);
+		foreach ( (array) $expired as $transfer ) {
+			if ( ! wp_is_uuid( $transfer ) ) {
+				continue;
+			}
+			$dir = self::staged_path( $transfer );
+			if ( null !== $dir && is_dir( $dir ) && ! self::lock( $transfer ) ) {
+				continue;
+			}
+			try {
+				$deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Delete only the expired transfer before removing its bytes.
+					$wpdb->prepare( 'DELETE FROM %i WHERE transfer = %s AND created < %d', Database::table( 'transfers' ), $transfer, time() - DAY_IN_SECONDS )
+				);
+				if ( 1 === $deleted ) {
+					self::delete_dir( (string) self::staged_path( $transfer ) );
+				}
+			} finally {
+				self::unlock();
+			}
+		}
+
+		// Remove abandoned and legacy disk manifests without trusting them.
+		$root = self::resolved_path( self::TMP, true );
+		if ( null === $root || ! is_dir( $root ) ) {
 			return;
 		}
-		try {
-			$transfers = (array) get_option( self::OPTION, array() );
-			foreach ( $transfers as $transfer => $manifest ) {
-				if ( (int) ( $manifest['created'] ?? 0 ) < time() - DAY_IN_SECONDS ) {
-					$dir = self::staged_path( (string) $transfer );
-					if ( null !== $dir && is_dir( $dir ) ) {
-						self::delete_dir( $dir );
-					}
-					unset( $transfers[ $transfer ] );
-				}
+		foreach ( (array) glob( $root . '/*', GLOB_ONLYDIR ) as $dir ) {
+			$transfer = basename( $dir );
+			if ( ! wp_is_uuid( $transfer ) || null === self::staged_path( $transfer ) || filemtime( $dir ) >= time() - DAY_IN_SECONDS || ! self::lock( $transfer ) ) {
+				continue;
 			}
-			update_option( self::OPTION, $transfers, false );
-
-			// Remove abandoned and legacy disk manifests without trusting them.
-			$root = self::resolved_path( self::TMP, true );
-			if ( null === $root || ! is_dir( $root ) ) {
-				return;
-			}
-			foreach ( (array) glob( $root . '/*', GLOB_ONLYDIR ) as $dir ) {
-				$transfer = basename( $dir );
-				if ( wp_is_uuid( $transfer ) && ! isset( $transfers[ $transfer ] ) && null !== self::staged_path( $transfer ) && filemtime( $dir ) < time() - DAY_IN_SECONDS ) {
+			try {
+				$known = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Do not remove staging for a live transfer.
+					$wpdb->prepare( 'SELECT transfer FROM %i WHERE transfer = %s', Database::table( 'transfers' ), $transfer )
+				);
+				if ( null === $known && '' === $wpdb->last_error ) {
 					self::delete_dir( $dir );
 				}
+			} finally {
+				self::unlock();
 			}
-		} finally {
-			self::unlock();
 		}
+	}
+
+	/**
+	 * Moves a staged file into uploads without overwriting a file another
+	 * transfer placed there meanwhile. A hard link does that atomically; where
+	 * the host or filesystem doesn't allow hard links, a checked rename does.
+	 *
+	 * @param string $tmp    Staged file.
+	 * @param string $target Destination.
+	 *
+	 * @return bool
+	 */
+	private static function publish( string $tmp, string $target ): bool {
+		if ( file_exists( $target ) || is_link( $target ) ) {
+			return false;
+		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- A failed link falls back to a copy.
+		if ( function_exists( 'link' ) && @link( $tmp, $target ) ) {
+			wp_delete_file( $tmp );
+
+			return true;
+		}
+
+		// Without hard links: create the destination exclusively ('x' fails if
+		// it exists, even when another request creates it meanwhile) and copy.
+		// phpcs:disable WordPress.WP.AlternativeFunctions -- Exclusive create and stream copy.
+		$out = @fopen( $target, 'xb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- An existing file is the expected failure.
+		if ( false === $out ) {
+			return false;
+		}
+		$in     = fopen( $tmp, 'rb' );
+		$copied = false !== $in && filesize( $tmp ) === stream_copy_to_stream( $in, $out );
+		if ( false !== $in ) {
+			fclose( $in );
+		}
+		$closed = fclose( $out );
+		// phpcs:enable WordPress.WP.AlternativeFunctions
+		if ( ! $copied || ! $closed ) {
+			wp_delete_file( $target );
+
+			return false;
+		}
+		wp_delete_file( $tmp );
+
+		return true;
 	}
 
 	/**
@@ -605,10 +694,17 @@ final class Media {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	private static function manifest( string $transfer, string $peer, int $record_id ): array|WP_Error {
-		$transfers = (array) get_option( self::OPTION, array() );
-		$data      = wp_is_uuid( $transfer ) ? ( $transfers[ $transfer ] ?? null ) : null;
+		global $wpdb;
+
+		$json = wp_is_uuid( $transfer ) ? $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Primary-key manifest lookup, never uploaded data.
+			$wpdb->prepare( 'SELECT manifest FROM %i WHERE transfer = %s', Database::table( 'transfers' ), $transfer )
+		) : null;
+		if ( wp_is_uuid( $transfer ) && '' !== $wpdb->last_error ) {
+			return self::busy();
+		}
+		$data = is_string( $json ) ? json_decode( $json, true ) : null;
 		if ( ! is_array( $data ) || ! is_array( $data['files'] ?? null ) || empty( $data['files'] ) || ( $data['transfer'] ?? null ) !== $transfer || ! is_int( $data['created'] ?? null ) || $data['created'] < time() - DAY_IN_SECONDS || ! is_string( $data['main'] ?? null ) || ! is_string( $data['record'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $data['record'] ) || ! is_string( $data['peer'] ?? null ) || ! is_int( $data['id'] ?? null ) || ! is_int( $data['local_id'] ?? null ) || ! is_array( $data['metadata'] ?? null ) ) {
-			return new WP_Error( 'jcore_silta_no_transfer', __( 'Unknown or expired file transfer.', 'jcore-silta' ), array( 'status' => 404 ) );
+			return self::missing_transfer();
 		}
 		if ( $data['peer'] !== $peer || $data['id'] !== $record_id ) {
 			return new WP_Error( 'jcore_silta_transfer_owner', __( 'The transfer belongs to another peer or attachment.', 'jcore-silta' ), array( 'status' => 403 ) );
@@ -756,23 +852,29 @@ final class Media {
 	}
 
 	/**
-	 * Locks manifest mutations, writes and finalization across requests.
+	 * Serializes writes for one transfer, or admission for one peer.
+	 *
+	 * @param string $key       Transfer UUID or verified peer UUID.
+	 * @param bool   $admission Whether this lock protects a peer admission count.
 	 *
 	 * @return bool
 	 */
-	private static function lock(): bool {
+	private static function lock( string $key, bool $admission = false ): bool {
 		if ( null !== self::$lock ) {
 			return false;
 		}
-		$root = self::resolved_path( self::TMP, true );
-		if ( null === $root || ! wp_mkdir_p( $root ) ) {
+		$root = $admission ? self::resolved_path( self::TMP, true ) : self::staged_path( $key );
+		if ( null === $root || ( $admission ? ! wp_mkdir_p( $root ) : ! is_dir( $root ) ) ) {
 			return false;
 		}
-		$path = self::resolved_path( self::TMP . '/.lock', true );
+		$relative = $admission ? self::TMP . '/.peer-' . hash( 'sha256', $key ) . '.lock' : self::TMP . '/' . $key . '/.lock';
+		$path     = self::resolved_path( $relative, true );
 		if ( null === $path ) {
 			return false;
 		}
-		self::protect( $root );
+		if ( $admission ) {
+			self::protect( $root );
+		}
 		$handle = fopen( $path, 'cb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Shared filesystem lock.
 		if ( false === $handle ) {
 			return false;
@@ -782,16 +884,12 @@ final class Media {
 			return false;
 		}
 		self::$lock = $handle;
-		// A previous operation in this request may have cached the manifest
-		// option before another request acquired this lock and changed it.
-		wp_cache_delete( self::OPTION, 'options' );
-		wp_cache_delete( 'notoptions', 'options' );
 
 		return true;
 	}
 
 	/**
-	 * Releases the manifest lock.
+	 * Releases the transfer or admission lock.
 	 *
 	 * @return void
 	 */
@@ -804,12 +902,48 @@ final class Media {
 	}
 
 	/**
+	 * Reports a transfer that must be prepared again.
+	 *
+	 * @return WP_Error
+	 */
+	private static function missing_transfer(): WP_Error {
+		return new WP_Error( 'jcore_silta_transfer_expired', __( 'Unknown or expired file transfer.', 'jcore-silta' ), array( 'status' => 404 ) );
+	}
+
+	/**
 	 * Reports a transfer currently being changed by another request.
 	 *
 	 * @return WP_Error
 	 */
 	private static function busy(): WP_Error {
 		return new WP_Error( 'jcore_silta_transfer_busy', __( 'A media transfer is busy. Try again.', 'jcore-silta' ), array( 'status' => 409 ) );
+	}
+
+	/**
+	 * Explains why a transfer's lock couldn't be taken: another request holds
+	 * it, or its staging folder is gone, which loses the transfer.
+	 *
+	 * @param string $transfer Transfer ID.
+	 *
+	 * @return WP_Error
+	 */
+	private static function locked_out( string $transfer ): WP_Error {
+		$dir = self::staged_path( $transfer );
+
+		return null === $dir || ! is_dir( $dir ) ? self::missing_transfer() : self::busy();
+	}
+
+	/**
+	 * Whether an error means the attachment's files have to be sent again: the
+	 * transfer expired or was lost, a staged file is missing or damaged, or
+	 * another file took its place in uploads.
+	 *
+	 * @param WP_Error $error Error from write() or finalize().
+	 *
+	 * @return bool
+	 */
+	public static function resend( WP_Error $error ): bool {
+		return in_array( $error->get_error_code(), array( 'jcore_silta_transfer_expired', 'jcore_silta_incomplete', 'jcore_silta_clash' ), true );
 	}
 
 	/**

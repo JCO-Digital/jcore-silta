@@ -5,9 +5,214 @@
  * @package Jcore\Silta
  */
 
+// phpcs:disable Universal.Files.SeparateFunctionsFromOO.Mixed -- Database fixture and guarded core stand-ins.
 // phpcs:disable Universal.Namespaces -- Scoped fixture helpers coexist with guarded global core stand-ins.
 
+namespace Jcore\Silta\Tests {
+	/** Database stand-in for individually stored transfers and runner items. */
+	final class MediaDatabaseStub {
+		/**
+		 * Table prefix.
+		 *
+		 * @var string
+		 */
+		public string $prefix = 'wp_';
+
+		/**
+		 * Last query error.
+		 *
+		 * @var string
+		 */
+		public string $last_error = '';
+
+		/**
+		 * Transfer rows keyed by UUID.
+		 *
+		 * @var array
+		 */
+		public array $transfers = array();
+
+		/**
+		 * Job item rows keyed by ID.
+		 *
+		 * @var array
+		 */
+		public array $items = array();
+
+		/**
+		 * Simulates failed writes or reads.
+		 *
+		 * @var bool
+		 */
+		public bool $fail = false;
+
+		/**
+		 * Simulates losing atomic consumption to another finalizer.
+		 *
+		 * @var bool
+		 */
+		public bool $lose_delete = false;
+
+		/**
+		 * Prepares the subset of SQL used by the media and job fixtures.
+		 *
+		 * @param string $sql     SQL.
+		 * @param mixed  ...$args Arguments.
+		 *
+		 * @return string
+		 */
+		public function prepare( string $sql, mixed ...$args ): string {
+			$args = is_array( $args[0] ?? null ) ? $args[0] : $args;
+			return preg_replace_callback(
+				'/%[isd]/',
+				static function ( array $placeholder ) use ( &$args ): string {
+					$value = array_shift( $args );
+					return '%d' === $placeholder[0] ? (string) (int) $value : "'" . str_replace( "'", "''", (string) $value ) . "'";
+				},
+				$sql
+			);
+		}
+
+		/**
+		 * Inserts one manifest with a unique transfer key.
+		 *
+		 * @param string $table   Table.
+		 * @param array  $row     Columns.
+		 * @param array  $formats Formats.
+		 *
+		 * @return int|false
+		 */
+		public function insert( string $table, array $row, array $formats ): int|false { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter -- Core signature.
+			if ( $this->fail || isset( $this->transfers[ $row['transfer'] ] ) ) {
+				return false;
+			}
+			$this->transfers[ $row['transfer'] ] = $row;
+			return 1;
+		}
+
+		/**
+		 * Reads a primary-key value or a peer count.
+		 *
+		 * @param string $sql SQL.
+		 *
+		 * @return mixed
+		 */
+		public function get_var( string $sql ): mixed {
+			$this->last_error = $this->fail ? 'database unavailable' : '';
+			if ( $this->fail ) {
+				return null;
+			}
+			if ( str_contains( $sql, 'COUNT(*)' ) ) {
+				preg_match( "/peer = '([^']+)'/", $sql, $match );
+				return count( array_filter( $this->transfers, static fn( array $row ): bool => $row['peer'] === $match[1] ) );
+			}
+			preg_match( "/transfer = '([^']+)'/", $sql, $match );
+			$row = $this->transfers[ $match[1] ] ?? null;
+			return str_starts_with( $sql, 'SELECT manifest' ) ? ( $row['manifest'] ?? null ) : ( $row['transfer'] ?? null );
+		}
+
+		/**
+		 * Returns UUIDs selected through the expiry index.
+		 *
+		 * @param string $sql SQL.
+		 *
+		 * @return array
+		 */
+		public function get_col( string $sql ): array {
+			preg_match( '/created < (\d+)/', $sql, $match );
+			return array_keys( array_filter( $this->transfers, static fn( array $row ): bool => $row['created'] < (int) $match[1] ) );
+		}
+
+		/**
+		 * Deletes one row, returning its affected-row count.
+		 *
+		 * @param string $sql SQL.
+		 *
+		 * @return int|false
+		 */
+		public function query( string $sql ): int|false {
+			if ( $this->fail ) {
+				return false;
+			}
+			preg_match( "/transfer = '([^']+)'/", $sql, $match );
+			$id = $match[1];
+			if ( $this->lose_delete ) {
+				unset( $this->transfers[ $id ] );
+				return 0;
+			}
+			if ( ! isset( $this->transfers[ $id ] ) ) {
+				return 0;
+			}
+			if ( preg_match( '/created < (\d+)/', $sql, $expiry ) && $this->transfers[ $id ]['created'] >= (int) $expiry[1] ) {
+				return 0;
+			}
+			unset( $this->transfers[ $id ] );
+			return 1;
+		}
+
+		/**
+		 * Filters job items using the runner's column filters.
+		 *
+		 * @param string $sql    SQL.
+		 * @param string $format Row format.
+		 *
+		 * @return array
+		 */
+		public function get_results( string $sql, string $format ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter -- Core signature.
+			$rows = array_values( $this->items );
+			preg_match_all( "/(job_id|id|included|status|object_type|subtype|action) (?:= ('[^']*'|[0-9]+)|IN \(([^)]+)\))/", $sql, $matches, PREG_SET_ORDER );
+			foreach ( $matches as $match ) {
+				$values = array_map( static fn( string $value ): string => trim( $value, " '\t" ), explode( ',', $match[3] ?? $match[2] ) );
+				$rows   = array_values( array_filter( $rows, static fn( array $row ): bool => in_array( (string) $row[ $match[1] ], $values, true ) ) );
+			}
+			if ( preg_match( '/LIMIT (\d+)/', $sql, $limit ) ) {
+				$rows = array_slice( $rows, 0, (int) $limit[1] );
+			}
+			return $rows;
+		}
+
+		/**
+		 * Reads an individual job item.
+		 *
+		 * @param string $sql    SQL.
+		 * @param string $format Row format.
+		 *
+		 * @return array|null
+		 */
+		public function get_row( string $sql, string $format ): ?array {
+			return $this->get_results( $sql, $format )[0] ?? null;
+		}
+
+		/**
+		 * Persists a runner's item changes.
+		 *
+		 * @param string $table   Table.
+		 * @param array  $changes Columns.
+		 * @param array  $where   Item ID.
+		 *
+		 * @return int
+		 */
+		public function update( string $table, array $changes, array $where ): int { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter -- Core signature.
+			$this->items[ $where['id'] ] = array_merge( $this->items[ $where['id'] ], $changes );
+			return 1;
+		}
+	}
+}
+
 namespace Jcore\Silta\Sync {
+	/**
+	 * Allows a fixture to claim a destination immediately before publication.
+	 *
+	 * @param string $source Staged source.
+	 * @param string $target Upload destination.
+	 *
+	 * @return bool
+	 */
+	function link( string $source, string $target ): bool {
+		apply_filters( 'jcore_silta_media_test_link', null, $source, $target );
+		return @\link( $source, $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Intentional collision fixture.
+	}
+
 	if ( ! function_exists( __NAMESPACE__ . '\\wp_get_upload_dir' ) ) {
 		/**
 		 * Isolates media's upload directory from other test fixture helpers.
@@ -45,6 +250,67 @@ namespace {
 // phpcs:disable Generic.CodeAnalysis.UnusedFunctionParameter -- Match core signatures.
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- Core function stand-ins.
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Isolated temporary test files.
+
+	if ( ! defined( 'ARRAY_A' ) ) {
+		define( 'ARRAY_A', 'ARRAY_A' );
+	}
+
+	if ( ! function_exists( 'current_user_can' ) ) {
+		/**
+		 * Grants administrator permission only to the runner import fixture.
+		 *
+		 * @param string $capability Capability.
+		 *
+		 * @return bool
+		 */
+		function current_user_can( string $capability ): bool {
+			return 'manage_options' === $capability && ! empty( $GLOBALS['jcore_silta_media_test_admin'] );
+		}
+	}
+
+	if ( ! function_exists( 'home_url' ) ) {
+		/**
+		 * Supplies the fixture site's home URL.
+		 *
+		 * @return string
+		 */
+		function home_url(): string {
+			return 'https://local.example';
+		}
+	}
+
+	if ( ! function_exists( 'wp_get_current_user' ) ) {
+		/**
+		 * Supplies an anonymous user for runner metadata.
+		 *
+		 * @return object
+		 */
+		function wp_get_current_user(): object {
+			return new class() {
+				/**
+				 * Whether the fixture user has a profile.
+				 *
+				 * @return bool
+				 */
+				public function exists(): bool {
+					return false;
+				}
+			};
+		}
+	}
+
+	if ( ! function_exists( 'get_bloginfo' ) ) {
+		/**
+		 * Supplies the fixture site's name.
+		 *
+		 * @param string $field Requested field.
+		 *
+		 * @return string
+		 */
+		function get_bloginfo( string $field ): string {
+			return 'Media test site';
+		}
+	}
 
 	if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 		define( 'DAY_IN_SECONDS', 86400 );
@@ -202,6 +468,21 @@ namespace {
 			}
 			$GLOBALS['jcore_silta_test_options'][ $key ] = $value;
 			return true;
+		}
+	}
+
+	if ( ! function_exists( 'delete_option' ) ) {
+		/**
+		 * Removes a legacy option from the fixture store.
+		 *
+		 * @param string $key Option name.
+		 *
+		 * @return bool
+		 */
+		function delete_option( string $key ): bool {
+			$exists = array_key_exists( $key, $GLOBALS['jcore_silta_test_options'] );
+			unset( $GLOBALS['jcore_silta_test_options'][ $key ] );
+			return $exists;
 		}
 	}
 

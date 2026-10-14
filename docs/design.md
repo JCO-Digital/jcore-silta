@@ -87,8 +87,8 @@ Responses are not signed. The initiator treats what a remote sends back as untru
   - **Filters** `jcore_silta_meta_references` and `jcore_silta_block_references`, so themes and other plugins can declare their own ID-bearing meta and block attributes.
 - **Taxonomies (decided):** match or create. Missing terms are created with their parent chain and term meta. Existing terms on the target are never modified. A synced post's term set replaces the target's set for each taxonomy you sync.
 - **Media (decided):** the original file and its generated sizes are streamed over the signed channel in chunks. Only sizes the target is missing are regenerated. Attachments are deduplicated by mapping, then by file hash, and attachment fields (title, alt, caption, description) are synced too.
-  - The target only accepts file types WordPress allows for the acting user. It checks the names when the transfer opens, and the bytes (`wp_check_filetype_and_ext()`) before anything moves into uploads. Executable, HTML and SVG files are refused, and the original and generated sizes must be images like the main file. The attachment's MIME type comes from the checked file, not the bundle.
-  - A transfer is bound to the site and attachment that opened it, and can be finalized once. Its manifest lives in the `jcore_silta_media_transfers` option, out of reach of the uploaded files. Every path must resolve inside uploads and outside the staging folder.
+  - The target only accepts file types WordPress allows for the acting user. It checks the names when the transfer opens, and the bytes (`wp_check_filetype_and_ext()`) before anything moves into uploads. Executable, HTML and SVG files are refused. The original and generated sizes must be images, and the main file an image or a PDF (WordPress generates image previews for PDFs). The attachment's MIME type comes from the checked file, not the bundle.
+  - A transfer is bound to the site and attachment that opened it, and can be finalized once. Its manifest is a row in the `jcore_silta_transfers` table, out of reach of the uploaded files. Every path must resolve inside uploads and outside the staging folder. If a transfer expired (a job resumed the next day) or its staged files went missing, the target says so and the files are sent again, at most twice.
   - A new attachment always gets its own copies of the files (`photo-1.jpg` when `photo.jpg` already exists), so undo can delete them without touching another attachment's files.
   - The source only serves files that resolve inside uploads, in chunks no larger than the configured chunk size.
 - **Polylang (decided):** the post's language and translation group. Translations of a selected post are offered as dependencies, and links between translations are restored on the target. WPML is not in v1.
@@ -126,7 +126,7 @@ Responses are not signed. The initiator treats what a remote sends back as untru
 - **Decided: permissions.** Syncing needs the `jcore_silta_sync` capability, which administrators get on activation and which can be granted to editors. Managing connections and keys needs `manage_options`. The remote also checks the key's scope.
   - A user with `jcore_silta_sync` but without `manage_options` sees and runs only their own jobs. Each object is checked against their own capabilities, since the remote acts as its pairing admin:
     - on a push, `read_post` for what they send;
-    - on a pull, `edit_post` for posts it overwrites, the post type's `create_posts` for new ones, and `delete_post` for orphans;
+    - on a pull, `edit_post` for posts it overwrites, the post type's `create_posts` for new ones, and `delete_post` for orphans. Like the post editor, publishing, scheduling or making a post private needs `publish_posts`, and giving it another author needs `edit_others_posts`;
     - the taxonomy's term capabilities for terms, and `edit_theme_options` for menus.
   - Only administrators can save replacement rules on a connection.
   - WP-CLI without `--user` counts as an administrator.
@@ -172,10 +172,11 @@ The exporter always runs on the source, and the planner and importer always run 
 | `jcore_silta_job_items` | job, object type, remote/local ID, action (create/update/skip/trash), chosen sections, status, error, snapshot |
 | `jcore_silta_snapshots` | job, object type, local ID, serialized prior state, created at |
 | `jcore_silta_nonces` | hash of key and request nonce, expiry (replay protection) |
+| `jcore_silta_transfers` | open media transfers: UUID, peer, created at, manifest (files, sizes, hashes, targets) |
 
-**Options:** `jcore_silta_site`, `jcore_silta_identity`, `jcore_silta_connections`, `jcore_silta_keys`, `jcore_silta_settings`, `jcore_silta_media_transfers`. All of these, and the tables, are removed in `uninstall.php`.
+**Options:** `jcore_silta_site`, `jcore_silta_identity`, `jcore_silta_connections`, `jcore_silta_keys`, `jcore_silta_settings`. All of these, and the tables, are removed in `uninstall.php`.
 
-**Limits (defaults, filterable):** 10 posts per batch, 2 MB media chunks (capped to fit the request body), 8 MB maximum request body (`jcore_silta_max_request_bytes`), 100 export keys or bundle objects per request (`jcore_silta_max_export_keys`, `jcore_silta_max_request_objects`), 32 MB maximum response (`jcore_silta_max_response_bytes`). A media transfer holds at most 256 files and 5 GB, and a site may have 1,000 open transfers (`jcore_silta_media_max_files`, `jcore_silta_media_max_bytes`, `jcore_silta_media_max_open_transfers`). Unfinished transfers expire after a day.
+**Limits (defaults, filterable):** 10 posts per batch, 2 MB media chunks (capped to fit the request body), 8 MB maximum request body (`jcore_silta_max_request_bytes`), 100 export keys or bundle objects per request (`jcore_silta_max_export_keys`, `jcore_silta_max_request_objects`), 32 MB maximum response (`jcore_silta_max_response_bytes`). A media transfer holds at most 256 files and 5 GB, and a site may have 10,000 open transfers (`jcore_silta_media_max_files`, `jcore_silta_media_max_bytes`, `jcore_silta_media_max_open_transfers`). Unfinished transfers expire after a day.
 
 ## Development environment
 

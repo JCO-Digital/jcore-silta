@@ -195,6 +195,48 @@ final class RemoteSecurityTest extends TestCase {
 	}
 
 	/**
+	 * Checks a pull needs publish_posts to publish and edit_others_posts to
+	 * hand a post to another author, like the post editor.
+	 *
+	 * @return void
+	 */
+	public function test_pull_checks_the_status_and_author_it_would_write(): void {
+		$GLOBALS['jcore_silta_remote_types']['book'] = (object) array(
+			'cap' => (object) array(
+				'publish_posts'     => 'publish_books',
+				'edit_others_posts' => 'edit_others_books',
+			),
+		);
+
+		$check    = new \ReflectionMethod( Runner::class, 'can_write_post' );
+		$incoming = static fn( int $author ): array => array(
+			'post_type' => 'book',
+			'fields'    => array( 'post_author' => $author ),
+		);
+		$mine     = array(
+			'fields' => array(
+				'post_status' => 'publish',
+				'post_author' => 7,
+			),
+		);
+
+		$this->assertTrue( $check->invoke( null, $incoming( 7 ), null, 'draft' ) );
+		$this->assertTrue( $check->invoke( null, $incoming( 0 ), null, 'pending' ) );
+		$this->assertFalse( $check->invoke( null, $incoming( 7 ), null, 'publish' ) );
+		$this->assertFalse( $check->invoke( null, $incoming( 7 ), null, 'private' ) );
+		// An already published post the user may edit stays published.
+		$this->assertTrue( $check->invoke( null, $incoming( 7 ), $mine, 'publish' ) );
+		$this->assertFalse( $check->invoke( null, $incoming( 1 ), null, 'draft' ) );
+		$this->assertFalse( $check->invoke( null, $incoming( 1 ), $mine, 'publish' ) );
+		// An unmatched author keeps the existing post's author.
+		$this->assertTrue( $check->invoke( null, $incoming( 0 ), $mine, 'publish' ) );
+
+		$GLOBALS['jcore_silta_remote_caps']['publish_books']     = true;
+		$GLOBALS['jcore_silta_remote_caps']['edit_others_books'] = true;
+		$this->assertTrue( $check->invoke( null, $incoming( 1 ), null, 'publish' ) );
+	}
+
+	/**
 	 * Checks pairing response cannot change host or downgrade https.
 	 *
 	 * @return void
