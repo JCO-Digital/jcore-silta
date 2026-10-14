@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -98,7 +98,13 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.2.0 =
+= 0.2.1 (2026-10-14) =
+
+* Fix: security - harden media transfers and import permissions
+* Fix: security - harden sync and remote request handling
+* CI: release - pin the shared publish workflow to a reviewed commit
+
+= v0.2.0 (2026-10-13) =
 
 * Feature: i18n - add Finnish and Swedish translations
 * Feature: add plugin bootstrap and uninstall cleanup
