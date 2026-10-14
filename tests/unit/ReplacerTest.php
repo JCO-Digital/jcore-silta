@@ -16,6 +16,15 @@ use PHPUnit\Framework\TestCase;
 final class ReplacerTest extends TestCase {
 
 	/**
+	 * Loads guarded WordPress helpers for this test process.
+	 *
+	 * @return void
+	 */
+	protected function setUp(): void {
+		require_once __DIR__ . '/stubs/incoming.php';
+	}
+
+	/**
 	 * A replacer moving staging URLs to production.
 	 *
 	 * @return Replacer
@@ -86,17 +95,17 @@ final class ReplacerTest extends TestCase {
 		$this->assertSame( array( 'https://example.com/deep' ), unserialize( $result['inner'] ) );
 	}
 
-	public function test_objects_keep_their_class_and_are_never_instantiated(): void {
-		$value  = 'O:11:"Some_Widget":2:{s:4:"href";s:28:"http://staging.example.com/x";s:5:"count";i:2;}';
-		$result = $this->sites()->string( $value );
-
-		$this->assertSame( 'O:11:"Some_Widget":2:{s:4:"href";s:21:"https://example.com/x";s:5:"count";i:2;}', $result );
+	public function test_objects_are_refused(): void {
+		$value = 'O:11:"Some_Widget":2:{s:4:"href";s:28:"http://staging.example.com/x";s:5:"count";i:2;}';
+		$this->expectException( \UnexpectedValueException::class );
+		$this->sites()->string( $value );
 	}
 
-	public function test_custom_serialized_objects_are_copied_verbatim(): void {
+	public function test_custom_serialized_objects_are_refused(): void {
 		$value = 'a:1:{i:0;C:3:"Foo":28:{http://staging.example.com/x}}';
 
-		$this->assertSame( $value, $this->sites()->string( $value ) );
+		$this->expectException( \UnexpectedValueException::class );
+		$this->sites()->string( $value );
 	}
 
 	public function test_doubles_with_exponents_survive(): void {
@@ -133,5 +142,44 @@ final class ReplacerTest extends TestCase {
 		);
 
 		$this->assertTrue( Replacer::between( $site, $site )->is_empty() );
+	}
+
+	public function test_nested_serialized_objects_are_refused_even_without_rules(): void {
+		$this->expectException( \UnexpectedValueException::class );
+		( new Replacer() )->string( serialize( array( serialize( (object) array( 'url' => 'x' ) ) ) ) );
+	}
+
+	public function test_nested_serialized_strings_share_the_depth_limit(): void {
+		$value = 'leaf';
+		for ( $i = 0; $i < 70; ++$i ) {
+			$value = serialize( $value );
+		}
+		$this->expectException( \UnexpectedValueException::class );
+		( new Replacer() )->string( $value );
+	}
+
+	public function test_object_token_text_is_plain_text(): void {
+		$this->assertSame( 'Mention O: and C: tokens https://example.com', $this->sites()->string( 'Mention O: and C: tokens http://staging.example.com' ) );
+		$this->assertSame( serialize( 'O: and C: tokens' ), ( new Replacer() )->string( serialize( 'O: and C: tokens' ) ) );
+	}
+
+	/**
+	 * Declared lengths cannot overflow tokenizer offsets.
+	 *
+	 * @return void
+	 */
+	public function test_oversized_string_length_does_not_overflow(): void {
+		$value = 's:999999999999999999999999:"x";';
+		$this->assertSame( $value, ( new Replacer() )->string( $value ) );
+	}
+
+	/**
+	 * Invalid replacement rules cannot reach string operations.
+	 *
+	 * @return void
+	 */
+	public function test_malformed_rules_are_ignored(): void {
+		$replacer = Replacer::between( array(), array(), array( 'bad', array( array(), 'x' ), array( 'old', 'new' ) ) );
+		$this->assertSame( 'new', $replacer->string( 'old' ) );
 	}
 }

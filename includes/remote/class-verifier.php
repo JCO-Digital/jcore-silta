@@ -8,6 +8,8 @@
 namespace Jcore\Silta\Remote;
 
 use Jcore\Silta\Crypto\Signature;
+use Jcore\Silta\Database;
+use Jcore\Silta\Endpoint\Endpoint;
 use Jcore\Silta\Site;
 use WP_Error;
 use WP_REST_Request;
@@ -20,11 +22,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Permission callbacks for the remote routes.
  */
 final class Verifier {
-
-	/**
-	 * Transient prefix for seen nonces.
-	 */
-	private const NONCE_PREFIX = 'jcore_silta_n_';
 
 	/**
 	 * The key that signed the current request.
@@ -97,6 +94,12 @@ final class Verifier {
 	 * @return true|WP_Error
 	 */
 	public static function verify( WP_REST_Request $request, string $scope ): bool|WP_Error {
+		self::$current = null;
+		$limits        = self::check_limits( $request );
+		if ( is_wp_error( $limits ) ) {
+			return $limits;
+		}
+
 		$fingerprint = (string) $request->get_header( 'x_silta_key' );
 		$timestamp   = (string) $request->get_header( 'x_silta_timestamp' );
 		$nonce       = (string) $request->get_header( 'x_silta_nonce' );
@@ -123,11 +126,10 @@ final class Verifier {
 			return $denied;
 		}
 
-		$seen = self::NONCE_PREFIX . md5( $fingerprint . $nonce );
-		if ( get_transient( $seen ) ) {
-			return new WP_Error( 'jcore_silta_replay', __( 'This request has already been received.', 'jcore-silta' ), array( 'status' => 401 ) );
+		$claimed = self::claim_nonce( $fingerprint, $nonce );
+		if ( is_wp_error( $claimed ) ) {
+			return $claimed;
 		}
-		set_transient( $seen, 1, 2 * Signature::WINDOW );
 
 		if ( empty( $key['enabled'] ) ) {
 			return new WP_Error(
@@ -162,6 +164,72 @@ final class Verifier {
 	}
 
 	/**
+	 * Rejects oversized bodies and collections before checking any signature.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function check_limits( WP_REST_Request $request ): bool|WP_Error {
+		if ( strlen( $request->get_body() ) > Endpoint::body_limit() ) {
+			return new WP_Error( 'jcore_silta_request_too_large', __( 'The sync request is too large. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 413 ) );
+		}
+
+		$args   = $request->get_json_params();
+		$action = substr( $request->get_route(), strlen( '/jcore-silta/v1/remote/' ) );
+		if ( ! is_array( $args ) ) {
+			return new WP_Error( 'jcore_silta_bad_request', __( 'The sync request must contain JSON data.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+		if ( 'export' === $action ) {
+			$keys = $args['keys'] ?? array();
+			if ( ! is_array( $keys ) || ! array_is_list( $keys ) ) {
+				return new WP_Error( 'jcore_silta_bad_request', __( 'Export keys must be a list.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+			if ( count( $keys ) > Endpoint::key_limit() ) {
+				return new WP_Error( 'jcore_silta_too_many_keys', __( 'The export request contains too many keys. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 413 ) );
+			}
+			foreach ( $keys as $key ) {
+				if ( ! is_string( $key ) || ! preg_match( '/^(post|term|menu):[1-9][0-9]*$/D', $key ) ) {
+					return new WP_Error( 'jcore_silta_bad_request', __( 'An export key is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+				}
+			}
+		}
+		if ( in_array( $action, array( 'import', 'plan', 'diff' ), true ) ) {
+			$objects = $args['bundle']['objects'] ?? array();
+			$trash   = $args['options']['trash'] ?? array();
+			if ( ! is_array( $objects ) || ! is_array( $trash ) ) {
+				return new WP_Error( 'jcore_silta_bad_request', __( 'Bundle objects and orphan IDs must be lists.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+			if ( count( $objects ) + count( $trash ) > Endpoint::object_limit() ) {
+				return new WP_Error( 'jcore_silta_too_many_objects', __( 'The sync request contains too many objects. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 413 ) );
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Atomically reserves a nonce in the database, without depending on an object cache.
+	 *
+	 * @param string $fingerprint Signing key ID.
+	 * @param string $nonce       Signed nonce.
+	 *
+	 * @return true|WP_Error
+	 */
+	private static function claim_nonce( string $fingerprint, string $nonce ): bool|WP_Error {
+		global $wpdb;
+
+		$inserted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Unique key makes the reservation atomic.
+			$wpdb->prepare( 'INSERT IGNORE INTO %i (nonce, expires) VALUES (%s, %d)', Database::table( 'nonces' ), hash( 'sha256', $fingerprint . ':' . $nonce ), time() + 2 * Signature::WINDOW )
+		);
+		if ( 1 !== $inserted ) {
+			return new WP_Error( 'jcore_silta_replay', __( 'This request has already been received or its nonce could not be reserved.', 'jcore-silta' ), array( 'status' => 401 ) );
+		}
+
+		return true;
+	}
+
+	/**
 	 * Permission callback for the pairing route: the token in the body is the
 	 * credential, and the signature proves the caller holds the key it registers.
 	 *
@@ -170,8 +238,17 @@ final class Verifier {
 	 * @return true|WP_Error
 	 */
 	public static function verify_pairing( WP_REST_Request $request ): bool|WP_Error {
-		$params    = $request->get_json_params();
-		$public    = base64_decode( (string) ( $params['public_key'] ?? '' ), true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Text to binary.
+		self::$current = null;
+		$limits        = self::check_limits( $request );
+		if ( is_wp_error( $limits ) ) {
+			return $limits;
+		}
+
+		$params = $request->get_json_params();
+		if ( ! is_string( $params['public_key'] ?? null ) || ! is_string( $params['token'] ?? null ) || ! is_array( $params['site'] ?? null ) || ! is_string( $params['site']['uuid'] ?? null ) ) {
+			return new WP_Error( 'jcore_silta_bad_pairing', __( 'The pairing request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
+		$public    = base64_decode( $params['public_key'], true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Text to binary.
 		$timestamp = (string) $request->get_header( 'x_silta_timestamp' );
 		$nonce     = (string) $request->get_header( 'x_silta_nonce' );
 		$signature = base64_decode( (string) $request->get_header( 'x_silta_signature' ), true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Text to binary.

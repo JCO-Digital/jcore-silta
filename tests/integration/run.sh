@@ -136,6 +136,23 @@ titles='foreach ( wp_get_nav_menu_items( 61 ) as $item ) { echo $item->title, "|
 check "menu items and order match" "$(wp staging eval "$titles")" "$(wp production eval "$titles")"
 contains "custom link URL replaced" "http://$PROD/docs/" "$(wp production eval 'foreach ( wp_get_nav_menu_items( 61 ) as $item ) { echo $item->url, " "; }')"
 
+echo "== Unsafe input is refused"
+docs=$(wp staging eval 'foreach ( wp_get_nav_menu_items( 61 ) as $i ) { if ( "Silta docs" === $i->title ) { echo $i->ID; } }')
+wp staging eval "update_post_meta( $docs, '_menu_item_classes', array( 'is-docs', 'bad\"class' ) ); wp_update_post( array( 'ID' => $docs, 'post_title' => 'Silta guide' ) );" >/dev/null
+wp staging silta push "$PROD" --menu=61 --yes >/dev/null
+contains "menu item classes sanitized" "is-docs,badclass" "$(wp production eval 'foreach ( wp_get_nav_menu_items( 61 ) as $i ) { echo implode( ",", $i->classes ), " "; }')"
+wp staging eval 'global $wpdb; $wpdb->insert( $wpdb->postmeta, array( "post_id" => 35, "meta_key" => "silta_object", "meta_value" => "O:8:\"stdClass\":0:{}" ) ); wp_cache_delete( 35, "post_meta" ); update_post_meta( 35, "silta_plain", "kept" );' >/dev/null
+wp staging silta push "$PROD" --post=35 --no-dependencies --yes >/dev/null
+p35=$(post_id production "$(wp staging post get 35 --field=post_name)" "$(wp staging post get 35 --field=post_type)")
+check "plain meta still syncs" "kept" "$(wp production post meta get "$p35" silta_plain)"
+check "meta holding a PHP object is refused" "0" "$(wp production eval "echo count( get_post_meta( $p35, 'silta_object' ) );")"
+evil=$(wp staging eval '$u = wp_get_upload_dir(); file_put_contents( $u["basedir"] . "/silta-evil.php", "<?php echo 1;" ); $id = wp_insert_post( array( "post_type" => "attachment", "post_title" => "silta-evil", "post_status" => "inherit", "post_mime_type" => "image/png" ) ); update_post_meta( $id, "_wp_attached_file", "silta-evil.php" ); echo $id;')
+wp staging silta push "$PROD" --post="$evil" --yes >/dev/null
+check "a .php file is not accepted as media" "no" "$(wp production eval '$u = wp_get_upload_dir(); echo glob( $u["basedir"] . "/silta-evil*" ) ? "yes" : "no";')"
+escape=$(wp staging eval '$id = wp_insert_post( array( "post_type" => "attachment", "post_title" => "silta-escape", "post_status" => "inherit", "post_mime_type" => "image/png" ) ); update_post_meta( $id, "_wp_attached_file", "../../wp-config.php" ); echo $id;')
+wp production silta pull "$STAGE" --post="$escape" --yes >/dev/null
+check "a pull can't read files outside uploads" "" "$(wp production post list --post_type=attachment --title=silta-escape --field=ID)"
+
 echo "== Whole post type and orphans"
 wp staging silta push "$PROD" --post-type=event --yes >/dev/null
 wp staging post delete 28 --force >/dev/null

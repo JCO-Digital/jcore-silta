@@ -18,6 +18,15 @@ use PHPUnit\Framework\TestCase;
 final class ValuesTest extends TestCase {
 
 	/**
+	 * Loads guarded WordPress helpers for this test process.
+	 *
+	 * @return void
+	 */
+	protected function setUp(): void {
+		require_once __DIR__ . '/stubs/incoming.php';
+	}
+
+	/**
 	 * Visitor: posts 1–9 become 100+, terms 1–9 become 200+, user 1 becomes 7.
 	 *
 	 * @return callable
@@ -122,5 +131,43 @@ final class ValuesTest extends TestCase {
 		Values::walk_path( $node, array( 'deep', '**' ), 'term', $this->visitor() );
 
 		$this->assertSame( '{"items":[{"id":101},{}],"deep":{"a":[202,"203"]}}', json_encode( $node ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Test.
+	}
+
+	public function test_serialized_references_are_not_walked(): void {
+		$raw = 'a:1:{i:0;R:1;}';
+		$this->assertSame( $raw, Values::map_raw( $raw, 'post', $this->visitor() ) );
+	}
+
+	public function test_decoded_self_reference_is_dropped(): void {
+		$value         = array( 3 );
+		$value['self'] = &$value;
+		$this->assertSame( array( 103 ), Values::map_value( $value, 'post', $this->visitor() ) );
+		Values::walk_path( $value, array( '**' ), 'post', $this->visitor() );
+		$this->assertSame( array( 103 ), $value );
+	}
+
+	public function test_recursive_json_objects_stop(): void {
+		$value       = (object) array( 'id' => 3 );
+		$value->self = $value;
+		Values::walk_path( $value, array( '**' ), 'post', $this->visitor() );
+		$this->assertSame( 103, $value->id );
+		$this->assertNull( $value->self );
+	}
+
+	public function test_deep_arrays_are_bounded(): void {
+		$value = 3;
+		for ( $i = 0; $i < 80; ++$i ) {
+			$value = array( $value );
+		}
+		$visited = 0;
+		Values::map_value(
+			$value,
+			'post',
+			static function ( string $kind, int $id ) use ( &$visited ): int {
+				++$visited;
+				return $id;
+			}
+		);
+		$this->assertSame( 0, $visited );
 	}
 }

@@ -65,6 +65,7 @@ final class Meta_Filter {
 	 */
 	public static function synced( string $key ): bool {
 		$patterns = self::patterns();
+		$key      = strtolower( $key );
 
 		if ( isset( $patterns['exact'][ $key ] ) ) {
 			return false;
@@ -114,7 +115,7 @@ final class Meta_Filter {
 			'prefixes' => array(),
 		);
 		foreach ( $excluded as $pattern ) {
-			$pattern = (string) $pattern;
+			$pattern = strtolower( (string) $pattern );
 			if ( str_ends_with( $pattern, '*' ) ) {
 				$patterns['prefixes'][] = substr( $pattern, 0, -1 );
 			} elseif ( '' !== $pattern ) {

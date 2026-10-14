@@ -41,17 +41,6 @@ final class State {
 	);
 
 	/**
-	 * Taxonomies that are not synced as terms.
-	 */
-	private const SKIPPED_TAXONOMIES = array(
-		'nav_menu',
-		'link_category',
-		'post_format',
-		'wp_theme',
-		'wp_template_part_area',
-	);
-
-	/**
 	 * Reads a post.
 	 *
 	 * @param int  $id     Post ID.
@@ -61,7 +50,7 @@ final class State {
 	 */
 	public static function post( int $id, bool $hashes = true ): ?array {
 		$post = get_post( $id );
-		if ( ! $post instanceof \WP_Post || in_array( $post->post_type, array( 'revision', 'nav_menu_item', 'customize_changeset', 'oembed_cache', 'user_request' ), true ) ) {
+		if ( ! $post instanceof \WP_Post || ! Content::syncable_type( $post->post_type ) ) {
 			return null;
 		}
 
@@ -118,7 +107,7 @@ final class State {
 	 */
 	public static function term( int $id ): ?array {
 		$term = get_term( $id );
-		if ( ! $term instanceof \WP_Term ) {
+		if ( ! $term instanceof \WP_Term || ! Content::syncable_taxonomy( $term->taxonomy ) ) {
 			return null;
 		}
 
@@ -307,8 +296,6 @@ final class State {
 	 * @return string[]
 	 */
 	public static function taxonomies( string $post_type ): array {
-		$skipped = array_merge( self::SKIPPED_TAXONOMIES, Polylang::TAXONOMIES );
-
-		return array_values( array_diff( get_object_taxonomies( $post_type ), $skipped ) );
+		return array_values( array_filter( get_object_taxonomies( $post_type ), array( Content::class, 'syncable_taxonomy' ) ) );
 	}
 }

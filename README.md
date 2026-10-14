@@ -150,6 +150,8 @@ Everything lives under `jcore-silta/v1`.
 | `{prefix}jcore_silta_jobs` | Jobs: role (initiator/target), direction, connection, status, options, state, summary |
 | `{prefix}jcore_silta_job_items` | Per object: plan, payload, choices and result (pruned with old jobs) |
 | `{prefix}jcore_silta_snapshots` | State before a job changed something, for undo (pruned after the configured days) |
+| `{prefix}jcore_silta_nonces` | Request nonces already seen, for replay protection (pruned daily) |
+| `{prefix}jcore_silta_transfers` | Open media transfers and their manifests (expire after a day) |
 
 Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jcore_silta_connections`, `jcore_silta_keys`, `jcore_silta_cloned`, `jcore_silta_db_version`. Schema changes go through `Database::maybe_upgrade()` with a bumped `DB_VERSION`.
 
@@ -161,7 +163,11 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_block_references` | filter | Block attributes that hold IDs: `array( 'jco/hero' => array( 'imageId' => 'post', 'posts.*' => 'post' ) )` |
 | `jcore_silta_excluded_meta` | filter | Meta keys never synced (a trailing `*` matches a prefix) |
 | `jcore_silta_post_types` | filter | Post types offered in the picker |
+| `jcore_silta_syncable_post_type` / `_taxonomy` / `_statuses` | filter | Whether a post type, taxonomy or post status may be exported and imported at all |
 | `jcore_silta_allow_insecure` | filter | Whether a remote may use plain http (default: only on `local`/`development` environments) |
+| `jcore_silta_allow_private_network` | filter | Whether a remote may be on a loopback or private address (default: the same as `jcore_silta_allow_insecure`) |
+| `jcore_silta_max_request_bytes`, `_max_response_bytes`, `_max_export_keys`, `_max_request_objects` | filter | Size limits of signed requests and responses (8 MB, 32 MB, 100, 100) |
+| `jcore_silta_media_max_files`, `_media_max_bytes`, `_media_max_open_transfers` | filter | Media transfer limits (256 files, 5 GB, 10,000 open per site) |
 | `jcore_silta_remote_url` | filter | Rewrite the URL of a request to a remote (the dev stack maps localhost ports to container names) |
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
 

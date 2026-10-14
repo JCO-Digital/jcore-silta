@@ -19,7 +19,7 @@ final class Database {
 	/**
 	 * Schema version. Bump it whenever a CREATE TABLE below changes.
 	 */
-	private const DB_VERSION = '1.0';
+	private const DB_VERSION = '1.2';
 
 	/**
 	 * Option holding the installed schema version.
@@ -39,6 +39,8 @@ final class Database {
 		'jobs'      => 'jcore_silta_jobs',
 		'items'     => 'jcore_silta_job_items',
 		'snapshots' => 'jcore_silta_snapshots',
+		'nonces'    => 'jcore_silta_nonces',
+		'transfers' => 'jcore_silta_transfers',
 	);
 
 	/**
@@ -74,9 +76,36 @@ final class Database {
 		set_transient( self::LOCK, 1, MINUTE_IN_SECONDS );
 
 		self::install();
-		update_option( self::DB_VERSION_OPTION, self::DB_VERSION, true );
+
+		// A failed CREATE leaves the version behind, so the next load retries.
+		if ( self::complete() ) {
+			delete_option( 'jcore_silta_media_transfers' );
+			update_option( self::DB_VERSION_OPTION, self::DB_VERSION, true );
+		}
 
 		delete_transient( self::LOCK );
+	}
+
+	/**
+	 * Whether every table exists.
+	 *
+	 * @return bool
+	 */
+	private static function complete(): bool {
+		global $wpdb;
+
+		// Querying each table works whatever case the server folds names to.
+		$suppressed = $wpdb->suppress_errors();
+		$complete   = true;
+		foreach ( array_keys( self::TABLES ) as $name ) {
+			if ( false === $wpdb->query( $wpdb->prepare( 'SELECT 1 FROM %i LIMIT 0', self::table( $name ) ) ) ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema check during upgrade.
+				$complete = false;
+				break;
+			}
+		}
+		$wpdb->suppress_errors( $suppressed );
+
+		return $complete;
 	}
 
 	/**
@@ -94,6 +123,29 @@ final class Database {
 		$jobs      = self::table( 'jobs' );
 		$items     = self::table( 'items' );
 		$snapshots = self::table( 'snapshots' );
+		$nonces    = self::table( 'nonces' );
+		$transfers = self::table( 'transfers' );
+
+		dbDelta(
+			"CREATE TABLE {$transfers} (
+transfer char(36) NOT NULL,
+peer char(36) NOT NULL,
+created bigint(20) unsigned NOT NULL,
+manifest longtext NOT NULL,
+PRIMARY KEY  (transfer),
+KEY peer (peer),
+KEY created (created)
+) {$charset};"
+		);
+
+		dbDelta(
+			"CREATE TABLE {$nonces} (
+nonce char(64) NOT NULL,
+expires bigint(20) unsigned NOT NULL,
+PRIMARY KEY  (nonce),
+KEY expires (expires)
+) {$charset};"
+		);
 
 		dbDelta(
 			"CREATE TABLE {$map} (

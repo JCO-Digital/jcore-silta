@@ -7,8 +7,10 @@
 
 namespace Jcore\Silta\Jobs;
 
+use Jcore\Silta\Capabilities;
 use Jcore\Silta\Database;
 use Jcore\Silta\Util;
+use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -102,24 +104,26 @@ final class Jobs {
 	/**
 	 * Lists jobs, newest first.
 	 *
-	 * @param int $page     Page.
-	 * @param int $per_page Jobs per page.
+	 * @param int      $page     Page.
+	 * @param int      $per_page Jobs per page.
+	 * @param int|null $user_id  Creator; null lists all jobs.
 	 *
 	 * @return array{jobs: array<int, array<string, mixed>>, total: int}
 	 */
-	public static function list( int $page = 1, int $per_page = 20 ): array {
+	public static function list( int $page = 1, int $per_page = 20, ?int $user_id = null ): array {
 		global $wpdb;
 
+		$where = null === $user_id ? '' : $wpdb->prepare( " WHERE role = 'initiator' AND user_id = %d", $user_id );
 		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
 			$wpdb->prepare(
-				'SELECT * FROM %i ORDER BY id DESC LIMIT %d OFFSET %d',
+				"SELECT * FROM %i{$where} ORDER BY id DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE is prepared above.
 				Database::table( 'jobs' ),
 				$per_page,
 				( max( 1, $page ) - 1 ) * $per_page
 			),
 			ARRAY_A
 		);
-		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', Database::table( 'jobs' ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+		$total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i{$where}", Database::table( 'jobs' ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table; WHERE is prepared above.
 
 		return array(
 			'jobs'  => array_map( array( self::class, 'hydrate' ), (array) $rows ),
@@ -128,22 +132,25 @@ final class Jobs {
 	}
 
 	/**
-	 * Makes sure the receiving side has a record of a job, for its history and
-	 * undo. On a pull the initiator's row already is that record.
+	 * Makes sure the receiving side has a peer-owned target job for history and
+	 * undo. Local pulls use their initiator row directly instead.
 	 *
 	 * @param string               $uuid Job UUID.
 	 * @param string               $site Source site UUID.
 	 * @param array<string, mixed> $meta direction, label, user.
 	 *
-	 * @return array<string, mixed>
+	 * @return array<string, mixed>|WP_Error
 	 */
-	public static function ensure_target( string $uuid, string $site, array $meta ): array {
+	public static function ensure_target( string $uuid, string $site, array $meta ): array|WP_Error {
+		if ( ! wp_is_uuid( $uuid ) ) {
+			return new WP_Error( 'jcore_silta_no_job', __( 'The import has no valid job ID.', 'jcore-silta' ), array( 'status' => 400 ) );
+		}
 		$job = self::get( $uuid );
 		if ( null !== $job ) {
-			return $job;
+			return self::target_permission( $job, $site ) ? $job : new WP_Error( 'jcore_silta_not_yours', __( 'That sync does not belong to this site.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
-		return self::create(
+		self::create(
 			array(
 				'uuid'         => $uuid,
 				'role'         => 'target',
@@ -154,6 +161,10 @@ final class Jobs {
 				'options'      => array( 'by' => sanitize_text_field( (string) ( $meta['user'] ?? '' ) ) ),
 			)
 		);
+
+		$job = self::get( $uuid );
+
+		return null !== $job && self::target_permission( $job, $site ) ? $job : new WP_Error( 'jcore_silta_not_yours', __( 'That sync does not belong to this site.', 'jcore-silta' ), array( 'status' => 403 ) );
 	}
 
 	/**
@@ -162,12 +173,14 @@ final class Jobs {
 	 * @param string                              $uuid    Job UUID.
 	 * @param array<string, array<string, mixed>> $results Import results.
 	 *
-	 * @return void
+	 * @param string                              $site Calling peer UUID.
+	 *
+	 * @return true|WP_Error
 	 */
-	public static function record_results( string $uuid, array $results ): void {
+	public static function record_results( string $uuid, array $results, string $site ): bool|WP_Error {
 		$job = self::get( $uuid );
-		if ( null === $job || 'target' !== $job['role'] ) {
-			return;
+		if ( null === $job || ! self::target_permission( $job, $site ) ) {
+			return new WP_Error( 'jcore_silta_not_yours', __( 'That sync does not belong to this site.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
 		$summary = $job['summary'];
@@ -177,6 +190,31 @@ final class Jobs {
 		}
 
 		self::update( (int) $job['id'], array( 'summary' => $summary ) );
+
+		return true;
+	}
+
+	/**
+	 * Whether a peer owns a receiving job.
+	 *
+	 * @param array<string, mixed> $job  Job.
+	 * @param string               $site Calling peer UUID.
+	 *
+	 * @return bool
+	 */
+	public static function target_permission( array $job, string $site ): bool {
+		return 'target' === $job['role'] && strtolower( $site ) === strtolower( (string) $job['remote_site'] );
+	}
+
+	/**
+	 * Whether the current syncing user may see or operate a job.
+	 *
+	 * @param array<string, mixed> $job Job.
+	 *
+	 * @return bool
+	 */
+	public static function user_permission( array $job ): bool {
+		return Capabilities::unrestricted() || ( 'initiator' === $job['role'] && get_current_user_id() > 0 && get_current_user_id() === (int) $job['user_id'] );
 	}
 
 	/**

@@ -202,16 +202,16 @@ final class Connections_Controller extends Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function add_connection( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		return $this->respond(
-			Connections::add(
-				(string) $request['pairing'],
-				(string) $request['label'],
-				array(
-					'user' => (string) $request['auth_user'],
-					'pass' => (string) $request['auth_pass'],
-				)
+		$connection = Connections::add(
+			(string) $request['pairing'],
+			(string) $request['label'],
+			array(
+				'user' => (string) $request['auth_user'],
+				'pass' => (string) $request['auth_pass'],
 			)
 		);
+
+		return $this->respond( is_wp_error( $connection ) ? $connection : Connections::public_view( $connection ) );
 	}
 
 	/**

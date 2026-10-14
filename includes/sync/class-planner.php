@@ -40,6 +40,13 @@ final class Planner {
 	 */
 	public function plan(): array {
 		$plans = array();
+		foreach ( $this->ctx->errors as $key => $error ) {
+			$plans[ $key ] = array(
+				'key'    => $key,
+				'action' => 'error',
+				'errors' => array( '' => $error ),
+			);
+		}
 		foreach ( $this->ctx->objects as $key => $record ) {
 			try {
 				$plans[ $key ] = $this->object( $record );
@@ -66,6 +73,15 @@ final class Planner {
 		$record = $this->ctx->objects[ $key ] ?? null;
 		if ( null === $record ) {
 			return array();
+		}
+
+		$errors = Preflight::check( $record );
+		if ( isset( $errors[''] ) ) {
+			return array(
+				'key'      => $key,
+				'errors'   => $errors,
+				'sections' => array(),
+			);
 		}
 
 		$match    = $this->ctx->match( $record );

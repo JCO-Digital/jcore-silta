@@ -23,6 +23,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 abstract class Endpoint {
 
 	/**
+	 * Maximum signed JSON body size, in bytes.
+	 *
+	 * @return int
+	 */
+	public static function body_limit(): int {
+		return max( 1, (int) apply_filters( 'jcore_silta_max_request_bytes', 8 * 1024 * 1024 ) );
+	}
+
+	/**
+	 * Maximum number of object keys in one export request.
+	 *
+	 * @return int
+	 */
+	public static function key_limit(): int {
+		return max( 1, (int) apply_filters( 'jcore_silta_max_export_keys', 100 ) );
+	}
+
+	/**
+	 * Maximum number of objects (including orphan deletions) in a bundle request.
+	 *
+	 * @return int
+	 */
+	public static function object_limit(): int {
+		return max( 1, (int) apply_filters( 'jcore_silta_max_request_objects', 100 ) );
+	}
+
+	/**
 	 * Site details, content types, menus and languages.
 	 *
 	 * @return array<string, mixed>|WP_Error

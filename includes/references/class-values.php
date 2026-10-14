@@ -8,6 +8,7 @@
 namespace Jcore\Silta\References;
 
 use Jcore\Silta\Sync\Replacer;
+use Jcore\Silta\Sync\Meta_Writer;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -42,8 +43,15 @@ final class Values {
 			return null === $id ? '' : (string) $id;
 		}
 
-		if ( Replacer::is_serialized( $raw ) ) {
-			$value = unserialize( $raw, array( 'allowed_classes' => false ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- No classes allowed, so nothing is instantiated.
+		if ( Replacer::is_serialized( $raw ) && Meta_Writer::valid_value( $raw ) ) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize, WordPress.PHP.NoSilencedErrors.Discouraged -- Validated raw data; malformed legacy values return false and no classes are allowed.
+			$value = @unserialize(
+				$raw,
+				array(
+					'allowed_classes' => false,
+					'max_depth'       => 64,
+				)
+			);
 			if ( is_array( $value ) ) {
 				return serialize( self::map_value( $value, $kind, $visit ) ?? array() ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Writes the format it read.
 			}
@@ -59,10 +67,15 @@ final class Values {
 	 * @param mixed    $value Value.
 	 * @param string   $kind  Kind of the IDs.
 	 * @param callable $visit Visitor.
+	 * @param int      $depth Nesting depth.
 	 *
 	 * @return mixed Null when a scalar reference is dropped.
 	 */
-	public static function map_value( mixed $value, string $kind, callable $visit ): mixed {
+	public static function map_value( mixed $value, string $kind, callable $visit, int $depth = 0 ): mixed {
+		if ( $depth > 64 ) {
+			return null;
+		}
+
 		if ( is_int( $value ) ) {
 			return 0 === $value ? 0 : $visit( $kind, $value );
 		}
@@ -80,7 +93,10 @@ final class Values {
 			$list   = array_is_list( $value );
 			$mapped = array();
 			foreach ( $value as $key => $item ) {
-				$new = self::map_value( $item, $kind, $visit );
+				if ( null !== \ReflectionReference::fromArrayElement( $value, $key ) ) {
+					continue;
+				}
+				$new = self::map_value( $item, $kind, $visit, $depth + 1 );
 				if ( null === $new && null !== $item ) {
 					continue;
 				}
@@ -99,30 +115,63 @@ final class Values {
 	 * Path segments are property names, `*` (every element) or `**` (every
 	 * scalar below).
 	 *
-	 * @param mixed    $node     Node, modified in place.
-	 * @param string[] $segments Path segments.
-	 * @param string   $kind     Kind of the IDs.
-	 * @param callable $visit    Visitor.
+	 * @param mixed                  $node     Node, modified in place.
+	 * @param string[]               $segments Path segments.
+	 * @param string                 $kind     Kind of the IDs.
+	 * @param callable               $visit    Visitor.
+	 * @param int                    $depth    Nesting depth.
+	 * @param \SplObjectStorage|null $seen Objects already visited.
 	 *
 	 * @return void
 	 */
-	public static function walk_path( mixed &$node, array $segments, string $kind, callable $visit ): void {
-		if ( empty( $segments ) ) {
-			$node = self::map_value( $node, $kind, $visit ) ?? ( is_string( $node ) ? '' : 0 );
+	public static function walk_path( mixed &$node, array $segments, string $kind, callable $visit, int $depth = 0, ?\SplObjectStorage $seen = null ): void {
+		if ( $depth > 64 ) {
+			$node = null;
 
 			return;
+		}
+		$seen ??= new \SplObjectStorage();
+		if ( is_object( $node ) ) {
+			if ( $seen->contains( $node ) ) {
+				$node = null;
+
+				return;
+			}
+			$seen->attach( $node );
+		}
+
+		if ( empty( $segments ) ) {
+			$node = self::map_value( $node, $kind, $visit, $depth ) ?? ( is_string( $node ) ? '' : 0 );
+
+			return;
+		}
+
+		if ( is_array( $node ) ) {
+			foreach ( array_keys( $node ) as $key ) {
+				if ( null !== \ReflectionReference::fromArrayElement( $node, $key ) ) {
+					unset( $node[ $key ] );
+				}
+			}
 		}
 
 		$segment = array_shift( $segments );
 
 		if ( '**' === $segment ) {
 			if ( is_array( $node ) || is_object( $node ) ) {
-				foreach ( $node as $key => &$child ) {
-					self::walk_path( $child, array( '**' ), $kind, $visit );
+				foreach ( $node as $key => $child ) {
+					if ( is_array( $node ) ) {
+						if ( null !== \ReflectionReference::fromArrayElement( $node, $key ) ) {
+							unset( $node[ $key ] );
+							continue;
+						}
+						self::walk_path( $node[ $key ], array( '**' ), $kind, $visit, $depth + 1, $seen );
+					} else {
+						self::walk_path( $node->$key, array( '**' ), $kind, $visit, $depth + 1, $seen );
+					}
 				}
 				unset( $child );
 			} elseif ( is_int( $node ) || ( is_string( $node ) && ctype_digit( $node ) ) ) {
-				$node = self::map_value( $node, $kind, $visit ) ?? ( is_string( $node ) ? '' : 0 );
+				$node = self::map_value( $node, $kind, $visit, $depth ) ?? ( is_string( $node ) ? '' : 0 );
 			}
 
 			return;
@@ -133,14 +182,14 @@ final class Values {
 				$list = array_is_list( $node );
 				foreach ( $node as $key => $child ) {
 					if ( empty( $segments ) ) {
-						$mapped = self::map_value( $child, $kind, $visit );
+						$mapped = self::map_value( $child, $kind, $visit, $depth + 1 );
 						if ( null === $mapped && null !== $child ) {
 							unset( $node[ $key ] );
 							continue;
 						}
 						$node[ $key ] = $mapped;
 					} else {
-						self::walk_path( $node[ $key ], $segments, $kind, $visit );
+						self::walk_path( $node[ $key ], $segments, $kind, $visit, $depth + 1, $seen );
 					}
 				}
 				if ( $list ) {
@@ -148,7 +197,7 @@ final class Values {
 				}
 			} elseif ( is_object( $node ) ) {
 				foreach ( get_object_vars( $node ) as $key => $child ) {
-					self::walk_path( $node->$key, $segments, $kind, $visit );
+					self::walk_path( $node->$key, $segments, $kind, $visit, $depth + 1, $seen );
 				}
 			}
 
@@ -157,7 +206,7 @@ final class Values {
 
 		if ( is_object( $node ) && property_exists( $node, $segment ) ) {
 			if ( empty( $segments ) ) {
-				$mapped = self::map_value( $node->$segment, $kind, $visit );
+				$mapped = self::map_value( $node->$segment, $kind, $visit, $depth + 1 );
 				if ( null === $mapped && null !== $node->$segment ) {
 					unset( $node->$segment );
 				} else {
@@ -166,10 +215,10 @@ final class Values {
 
 				return;
 			}
-			self::walk_path( $node->$segment, $segments, $kind, $visit );
+			self::walk_path( $node->$segment, $segments, $kind, $visit, $depth + 1, $seen );
 		} elseif ( is_array( $node ) && array_key_exists( $segment, $node ) ) {
 			if ( empty( $segments ) ) {
-				$mapped = self::map_value( $node[ $segment ], $kind, $visit );
+				$mapped = self::map_value( $node[ $segment ], $kind, $visit, $depth + 1 );
 				if ( null === $mapped && null !== $node[ $segment ] ) {
 					unset( $node[ $segment ] );
 				} else {
@@ -178,7 +227,7 @@ final class Values {
 
 				return;
 			}
-			self::walk_path( $node[ $segment ], $segments, $kind, $visit );
+			self::walk_path( $node[ $segment ], $segments, $kind, $visit, $depth + 1, $seen );
 		}
 	}
 }

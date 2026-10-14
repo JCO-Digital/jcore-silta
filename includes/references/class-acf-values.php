@@ -64,16 +64,26 @@ final class Acf_Values {
 	 * @param mixed    $data  Decoded data (object or array), modified in place.
 	 * @param callable $visit Visitor.
 	 * @param callable $field Field resolver.
+	 * @param int      $depth Nesting depth.
 	 *
 	 * @return void
 	 */
-	public static function walk_data( mixed &$data, callable $visit, callable $field ): void {
+	public static function walk_data( mixed &$data, callable $visit, callable $field, int $depth = 0 ): void {
+		if ( $depth > 64 ) {
+			$data = null;
+
+			return;
+		}
 		if ( ! is_object( $data ) && ! is_array( $data ) ) {
 			return;
 		}
 
 		$keys = is_object( $data ) ? array_keys( get_object_vars( $data ) ) : array_keys( $data );
 		foreach ( $keys as $key ) {
+			if ( is_array( $data ) && null !== \ReflectionReference::fromArrayElement( $data, $key ) ) {
+				unset( $data[ $key ] );
+				continue;
+			}
 			$key = (string) $key;
 			if ( str_starts_with( $key, '_' ) ) {
 				continue;
@@ -90,11 +100,11 @@ final class Acf_Values {
 			}
 
 			if ( null !== $kind ) {
-				$mapped = Values::map_value( $value, $kind, $visit );
+				$mapped = Values::map_value( $value, $kind, $visit, $depth );
 				$value  = null === $mapped ? '' : $mapped;
 			} elseif ( is_object( $value ) || is_array( $value ) ) {
 				// Repeater rows, groups and flexible layouts keyed by field key.
-				self::walk_data( $value, $visit, $field );
+				self::walk_data( $value, $visit, $field, $depth + 1 );
 			}
 
 			unset( $value );

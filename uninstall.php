@@ -20,11 +20,11 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 function jcore_silta_uninstall_site(): void {
 	global $wpdb;
 
-	foreach ( array( 'settings', 'site', 'identity', 'connections', 'keys', 'cloned', 'db_version' ) as $option ) {
+	foreach ( array( 'settings', 'site', 'identity', 'connections', 'keys', 'cloned', 'db_version', 'media_transfers' ) as $option ) {
 		delete_option( 'jcore_silta_' . $option );
 	}
 
-	// Handshake caches, seen request nonces and the upgrade lock.
+	// Handshake caches, key last-used times and the upgrade lock.
 	$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Uninstall.
 		$wpdb->prepare(
 			'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s',
@@ -34,7 +34,7 @@ function jcore_silta_uninstall_site(): void {
 		)
 	);
 
-	foreach ( array( 'jcore_silta_map', 'jcore_silta_jobs', 'jcore_silta_job_items', 'jcore_silta_snapshots' ) as $table ) {
+	foreach ( array( 'jcore_silta_map', 'jcore_silta_jobs', 'jcore_silta_job_items', 'jcore_silta_snapshots', 'jcore_silta_nonces', 'jcore_silta_transfers' ) as $table ) {
 		$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $wpdb->prefix . $table ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Uninstall.
 	}
 

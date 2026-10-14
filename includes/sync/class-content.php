@@ -29,6 +29,7 @@ final class Content {
 		'wp_template',
 		'wp_template_part',
 		'wp_global_styles',
+		'wp_navigation',
 		'wp_font_family',
 		'wp_font_face',
 		'acf-field-group',
@@ -39,6 +40,58 @@ final class Content {
 	);
 
 	/**
+	 * Whether a registered post type can travel through the sync protocol.
+	 *
+	 * @param string $post_type Post type.
+	 * @param bool   $menu_item Whether this is the dedicated menu item path.
+	 *
+	 * @return bool
+	 */
+	public static function syncable_type( string $post_type, bool $menu_item = false ): bool {
+		$allowed = ! in_array( $post_type, self::EXCLUDED_TYPES, true ) || ( $menu_item && 'nav_menu_item' === $post_type );
+
+		/**
+		 * Filters whether a registered post type can be synced.
+		 *
+		 * @param bool   $allowed   Whether the type is allowed.
+		 * @param string $post_type Post type.
+		 * @param bool   $menu_item Whether this is the dedicated menu item path.
+		 */
+		return post_type_exists( $post_type ) && (bool) apply_filters( 'jcore_silta_syncable_post_type', $allowed, $post_type, $menu_item );
+	}
+
+	/**
+	 * Whether a registered taxonomy can be synced as ordinary terms.
+	 *
+	 * @param string $taxonomy Taxonomy name.
+	 *
+	 * @return bool
+	 */
+	public static function syncable_taxonomy( string $taxonomy ): bool {
+		$excluded = array_merge( array( 'nav_menu', 'link_category', 'post_format', 'wp_theme', 'wp_template_part_area' ), Polylang::TAXONOMIES );
+
+		/**
+		 * Filters whether a registered taxonomy can be synced.
+		 *
+		 * @param bool   $allowed  Whether the taxonomy is allowed.
+		 * @param string $taxonomy Taxonomy name.
+		 */
+		return taxonomy_exists( $taxonomy ) && (bool) apply_filters( 'jcore_silta_syncable_taxonomy', ! in_array( $taxonomy, $excluded, true ), $taxonomy );
+	}
+
+	/**
+	 * Whether a post's status is allowed for its type.
+	 *
+	 * @param string $post_type Post type.
+	 * @param string $status    Post status.
+	 *
+	 * @return bool
+	 */
+	public static function syncable_status( string $post_type, string $status ): bool {
+		return in_array( $status, self::statuses( $post_type ), true );
+	}
+
+	/**
 	 * Returns the post types that can be synced.
 	 *
 	 * @return array<int, array<string, mixed>>
@@ -46,7 +99,7 @@ final class Content {
 	public static function types(): array {
 		$types = array();
 		foreach ( get_post_types( array( 'show_ui' => true ), 'objects' ) as $type ) {
-			if ( in_array( $type->name, self::EXCLUDED_TYPES, true ) ) {
+			if ( ! self::syncable_type( $type->name ) ) {
 				continue;
 			}
 
@@ -80,6 +133,14 @@ final class Content {
 		$per_page  = max( 1, min( 100, (int) ( $args['per_page'] ?? 20 ) ) );
 		$page      = max( 1, (int) ( $args['page'] ?? 1 ) );
 
+		if ( ! self::syncable_type( $post_type ) ) {
+			return array(
+				'items' => array(),
+				'total' => 0,
+				'pages' => 0,
+			);
+		}
+
 		$query_args = array(
 			'post_type'              => $post_type,
 			'post_status'            => self::statuses( $post_type ),
@@ -97,15 +158,16 @@ final class Content {
 			$query_args['s'] = $search;
 		}
 		if ( ! empty( $args['include'] ) ) {
-			$query_args['post__in']  = array_map( 'intval', (array) $args['include'] );
-			$query_args['post_type'] = 'any';
-			$query_args['orderby']   = 'post__in';
+			$query_args['post__in']    = array_map( 'intval', (array) $args['include'] );
+			$query_args['post_type']   = array_values( array_filter( get_post_types(), array( self::class, 'syncable_type' ) ) );
+			$query_args['post_status'] = array_values( array_unique( array_merge( self::statuses( 'post' ), self::statuses( 'attachment' ) ) ) );
+			$query_args['orderby']     = 'post__in';
 		}
 
 		$query = new \WP_Query( $query_args );
 		$items = array();
 		foreach ( $query->posts as $post ) {
-			if ( ! $post instanceof \WP_Post ) {
+			if ( ! $post instanceof \WP_Post || ! self::syncable_type( $post->post_type ) || ! self::syncable_status( $post->post_type, $post->post_status ) ) {
 				continue;
 			}
 			$language = Polylang::post( $post->ID );
@@ -138,6 +200,10 @@ final class Content {
 	 * @return int[]
 	 */
 	public static function ids( string $post_type ): array {
+		if ( ! self::syncable_type( $post_type ) ) {
+			return array();
+		}
+
 		$ids = get_posts(
 			array(
 				'post_type'        => sanitize_key( $post_type ),
@@ -162,11 +228,15 @@ final class Content {
 	 * @return string[]
 	 */
 	private static function statuses( string $post_type ): array {
-		if ( 'attachment' === $post_type ) {
-			return array( 'inherit', 'private' );
-		}
+		$statuses = 'attachment' === $post_type ? array( 'inherit', 'private' ) : array_values( array_diff( get_post_stati( array( 'internal' => false ) ), array( 'trash', 'auto-draft', 'inherit' ) ) );
 
-		return array_values( array_diff( get_post_stati( array( 'internal' => false ) ), array( 'trash', 'auto-draft', 'inherit' ) ) );
+		/**
+		 * Filters the statuses eligible for syncing a post type.
+		 *
+		 * @param string[] $statuses  Post statuses.
+		 * @param string   $post_type Post type.
+		 */
+		return array_values( array_intersect( (array) apply_filters( 'jcore_silta_syncable_statuses', $statuses, $post_type ), $statuses ) );
 	}
 
 	/**

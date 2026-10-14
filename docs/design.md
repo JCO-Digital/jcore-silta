@@ -36,15 +36,19 @@ This document records the decisions from the initial design session (2026-10-13)
 2. On the initiator: *Connections → Add connection* and paste the string. If the initiator has no key pair yet, it creates one now. It calls the remote's `POST pair` with the token, its public key and its site details, signed with the new private key to prove it holds that key.
 3. The remote checks the token and burns it. It stores the initiator's public key, label, scopes, site UUID and home URL, along with the admin who created the token. It answers with its own site details and the granted scopes.
 
+The site UUID in step 2 is the initiator's own claim. So if the remote already trusts a different, enabled key for that UUID, pairing is refused until an admin revokes the old key: a pairing token can't take over another site's identity and mappings. The REST URL in the remote's answer must keep the host from the pairing string.
+
 Once pairing is done, the pasted string is useless, so it doesn't matter if it lingers in Slack or email.
 
 **Requests.** Every remote call is a `POST` with a JSON body. The initiator signs
 `silta-v1 \n <remote site UUID> \n <method> \n <route> \n <timestamp> \n <nonce> \n <sha256 of body>`
-and sends `X-Silta-Key` (its key fingerprint), `X-Silta-Timestamp`, `X-Silta-Nonce` and `X-Silta-Signature`. The remote looks up the public key by fingerprint and checks the signature with `sodium_crypto_sign_verify_detached`. It then checks the timestamp is within ±5 minutes, the nonce hasn't been seen (cached for 10 minutes), the key is enabled, and the route's scope. Including the remote's UUID stops a signed request being replayed against another site that trusts the same key.
+and sends `X-Silta-Key` (its key fingerprint), `X-Silta-Timestamp`, `X-Silta-Nonce` and `X-Silta-Signature`. The remote looks up the public key by fingerprint and checks the signature with `sodium_crypto_sign_verify_detached`. It then checks the timestamp is within ±5 minutes, the nonce hasn't been seen, the key is enabled, and the route's scope. Nonces are reserved with an insert into the `jcore_silta_nonces` table for 10 minutes, so two concurrent copies of a request can't both pass. Oversized bodies and batches are refused before any of this. Including the remote's UUID stops a signed request being replayed against another site that trusts the same key.
 
 The remote then acts as the admin who created the pairing token. Imports run with that user's capabilities, and if that user loses `manage_options` or is deleted, the connection stops working. Remote routes are excluded from Application Password handling, because otherwise a basic auth header for a protected staging site would be read as a failed WordPress login.
 
-HTTPS is required for remote URLs, except when the environment type is `local` or `development` (filterable). A signature proves who sent a request but doesn't hide its content.
+HTTPS is required for remote URLs, except when the environment type is `local` or `development` (filterable). A signature proves who sent a request but doesn't hide its content. Requests use WordPress's safe-URL check, so a connection can't point at loopback or private-network addresses (or ports other than 80, 443 and 8080) unless insecure connections are allowed or the `jcore_silta_allow_private_network` filter says so.
+
+Responses are not signed. The initiator treats what a remote sends back as untrusted: links and thumbnails must be http(s), and the HTML diff table a remote renders for a push is reduced to the table's own tags with `wp_kses()`.
 
 **The private key.**
 
@@ -57,7 +61,7 @@ HTTPS is required for remote URLs, except when the environment type is `local` o
 
 - A site's identity, meaning its UUID and key, is tied to its home URL. When the home URL changes (a database clone or refresh), the site gets a new UUID and discards a key it finds in the database, even one it could decrypt because the salts were copied too. A key from `wp-config.php` is kept. Outgoing connections and trusted keys that came with the copied database are marked *inherited* and turned off until an admin reviews them. A notice explains what happened.
 - If the salts are rotated, the key can't be decrypted any more. The site says so, creates a new key pair, and each remote gives you a fresh pairing string.
-- Revoking a site on the remote deletes its public key, and requests from it fail immediately.
+- Revoking a site on the remote deletes its public key, and requests from it fail immediately. Re-pairing a site with a new key (after salts were rotated, say) needs its old key revoked first.
 
 ### Identity and matching
 
@@ -75,7 +79,7 @@ HTTPS is required for remote URLs, except when the environment type is `local` o
 ### What is synced
 
 - **Core fields:** title, slug, content, excerpt, status, dates, author, parent, menu order, template, comment/ping status, password, post format, sticky. **Default:** authors are matched by login, then email, then fall back to the user running the sync. `post_modified` is set by the target as usual.
-- **Custom fields (decided):** every meta key is copied, except an exclude list (default: `_edit_lock`, `_edit_last`, `_wp_old_slug`, `_wp_old_date`, `_encloseme`, `_pingme`, Silta's own `_jcore_silta_*`, plus anything added with the `jcore_silta_excluded_meta` filter). Meta keys removed on the source are removed on the target. Values that hold IDs are remapped by these handlers:
+- **Custom fields (decided):** every meta key is copied, except an exclude list (default: `_edit_lock`, `_edit_last`, `_wp_old_slug`, `_wp_old_date`, `_encloseme`, `_pingme`, Silta's own `_jcore_silta_*`, plus anything added with the `jcore_silta_excluded_meta` filter). Meta keys removed on the source are removed on the target. The target applies the same exclude list to incoming meta, and never takes keys it writes itself (`_thumbnail_id`, `_wp_page_template`, `_wp_attached_file`, `_wp_attachment_metadata`, `_wp_attachment_backup_sizes`, `_menu_item_*`) from the meta map. A serialized value holding a PHP object (`O:`, `C:` or an enum) or a reference is refused: the key keeps its local value and the job reports a warning. Values that hold IDs are remapped by these handlers:
   - **ACF / ACF Pro:** image, gallery, file, post object, relationship, page link, taxonomy, user and link fields, including inside repeaters, flexible content, groups and clones. Also **ACF block data** inside block comments.
   - **SEO plugins:** Yoast, Rank Math and SEOPress image IDs and URLs.
   - **Core block attributes:** `core/image`, `gallery`, `cover`, `media-text`, `file`, `video`, `audio`, `block` (ref), `navigation`/`navigation-link`, `query` (include/exclude/parents/taxQuery), `latest-posts` categories, `page-list`, and `wp-image-123` / `data-id` in markup. Markup is only re-serialised for blocks that actually changed, so re-saving doesn't add noise.
@@ -83,6 +87,10 @@ HTTPS is required for remote URLs, except when the environment type is `local` o
   - **Filters** `jcore_silta_meta_references` and `jcore_silta_block_references`, so themes and other plugins can declare their own ID-bearing meta and block attributes.
 - **Taxonomies (decided):** match or create. Missing terms are created with their parent chain and term meta. Existing terms on the target are never modified. A synced post's term set replaces the target's set for each taxonomy you sync.
 - **Media (decided):** the original file and its generated sizes are streamed over the signed channel in chunks. Only sizes the target is missing are regenerated. Attachments are deduplicated by mapping, then by file hash, and attachment fields (title, alt, caption, description) are synced too.
+  - The target only accepts file types WordPress allows for the acting user. It checks the names when the transfer opens, and the bytes (`wp_check_filetype_and_ext()`) before anything moves into uploads. Executable, HTML and SVG files are refused. The original and generated sizes must be images, and the main file an image or a PDF (WordPress generates image previews for PDFs). The attachment's MIME type comes from the checked file, not the bundle.
+  - A transfer is bound to the site and attachment that opened it, and can be finalized once. Its manifest is a row in the `jcore_silta_transfers` table, out of reach of the uploaded files. Every path must resolve inside uploads and outside the staging folder. If a transfer expired (a job resumed the next day) or its staged files went missing, the target says so and the files are sent again, at most twice.
+  - A new attachment always gets its own copies of the files (`photo-1.jpg` when `photo.jpg` already exists), so undo can delete them without touching another attachment's files.
+  - The source only serves files that resolve inside uploads, in chunks no larger than the configured chunk size.
 - **Polylang (decided):** the post's language and translation group. Translations of a selected post are offered as dependencies, and links between translations are restored on the target. WPML is not in v1.
 - **v1 extras (decided):** nav menus (menus, items and optionally locations, with linked objects remapped), standalone media in the picker, and reusable blocks/patterns (`wp_block`) as a selectable post type.
 - **Not in v1:** ACF options pages, WPML, comments, users, widgets, site options.
@@ -96,7 +104,7 @@ HTTPS is required for remote URLs, except when the environment type is `local` o
 
 - **Decided: automatic URL swap plus saved rules.** The source's home and uploads URLs are replaced with the target's, in plain, JSON-escaped (`\/`) and URL-encoded forms. On top of that come find → replace pairs saved on the connection, which you can edit for each run. Plain strings only, no regex.
 - It applies to title, content, excerpt, meta values, term meta and attachment fields.
-- It is serialization-safe: serialized values are decoded (`allowed_classes => false`), walked, replaced and re-encoded, and JSON strings inside meta are walked the same way.
+- It is serialization-safe: serialized values are decoded (`allowed_classes => false`), walked, replaced and re-encoded, and JSON strings inside meta are walked the same way. Values holding objects or references are refused rather than rewritten, and nesting depth is capped, also across serialized strings inside serialized values.
 - Order: ID remapping first, then search-replace. The diff compares that transformed result with the target, so URL differences never show as changes.
 
 ### Conflicts, status and deletions
@@ -113,9 +121,17 @@ HTTPS is required for remote URLs, except when the environment type is `local` o
 
 ### Safety
 
-- **Decided: snapshots and undo.** Before the target overwrites a post, term set, menu or attachment, it saves a full snapshot (core fields, meta, terms, language) to its own table. History lists jobs on both sides, and *Undo* restores the snapshots and trashes anything the job created. **Default:** snapshots are kept for 30 days (filterable).
+- **Decided: snapshots and undo.** Before the target overwrites a post, term set, menu or attachment, it saves a full snapshot (core fields, meta, terms, language) to its own table. History lists jobs on both sides, and *Undo* restores the snapshots and trashes anything the job created (attachments are deleted with their files). A remote can only undo jobs it ran on this site. **Default:** snapshots are kept for 30 days (filterable).
 - **Decided: preflight blocks mismatches.** The handshake exchanges the protocol version, post types, taxonomies, ACF field keys (matched by key, then by name) and Polylang languages. Anything the target lacks shows as a per-post or per-section error, and that part can't be synced. A different major protocol version blocks the connection.
 - **Decided: permissions.** Syncing needs the `jcore_silta_sync` capability, which administrators get on activation and which can be granted to editors. Managing connections and keys needs `manage_options`. The remote also checks the key's scope.
+  - A user with `jcore_silta_sync` but without `manage_options` sees and runs only their own jobs. Each object is checked against their own capabilities, since the remote acts as its pairing admin:
+    - on a push, `read_post` for what they send;
+    - on a pull, `edit_post` for posts it overwrites, the post type's `create_posts` for new ones, and `delete_post` for orphans. Like the post editor, publishing, scheduling or making a post private needs `publish_posts`, and giving it another author needs `edit_others_posts`;
+    - the taxonomy's term capabilities for terms, and `edit_theme_options` for menus.
+  - Only administrators can save replacement rules on a connection.
+  - WP-CLI without `--user` counts as an administrator.
+  - Imported and restored HTML goes through kses unless the acting user has `unfiltered_html`. That's the user running the sync, or on the remote the pairing admin. This respects `DISALLOW_UNFILTERED_HTML` and multisite.
+- **Decided: only content types offered in the picker sync.** Templates, global styles, custom CSS, navigation posts and ACF's own field group and post type definitions are never exported or imported, nor trashed, auto-draft or revision posts. Terms must be in a taxonomy registered for the post's type. Filters: `jcore_silta_syncable_post_type`, `jcore_silta_syncable_taxonomy`, `jcore_silta_syncable_statuses`.
 
 ### Interface
 
@@ -155,10 +171,12 @@ The exporter always runs on the source, and the planner and importer always run 
 | `jcore_silta_jobs` | job UUID, role (initiator/target), connection, direction, user, options, status, progress, timestamps |
 | `jcore_silta_job_items` | job, object type, remote/local ID, action (create/update/skip/trash), chosen sections, status, error, snapshot |
 | `jcore_silta_snapshots` | job, object type, local ID, serialized prior state, created at |
+| `jcore_silta_nonces` | hash of key and request nonce, expiry (replay protection) |
+| `jcore_silta_transfers` | open media transfers: UUID, peer, created at, manifest (files, sizes, hashes, targets) |
 
 **Options:** `jcore_silta_site`, `jcore_silta_identity`, `jcore_silta_connections`, `jcore_silta_keys`, `jcore_silta_settings`. All of these, and the tables, are removed in `uninstall.php`.
 
-**Limits (defaults, filterable):** 10 posts per batch, 2 MB media chunks, 8 MB maximum request body.
+**Limits (defaults, filterable):** 10 posts per batch, 2 MB media chunks (capped to fit the request body), 8 MB maximum request body (`jcore_silta_max_request_bytes`), 100 export keys or bundle objects per request (`jcore_silta_max_export_keys`, `jcore_silta_max_request_objects`), 32 MB maximum response (`jcore_silta_max_response_bytes`). A media transfer holds at most 256 files and 5 GB, and a site may have 10,000 open transfers (`jcore_silta_media_max_files`, `jcore_silta_media_max_bytes`, `jcore_silta_media_max_open_transfers`). Unfinished transfers expire after a day.
 
 ## Development environment
 

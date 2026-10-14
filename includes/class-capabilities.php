@@ -35,6 +35,36 @@ final class Capabilities {
 	}
 
 	/**
+	 * Whether the current user syncs without per-object checks and sees every
+	 * job: an administrator, or WP-CLI run without --user, since shell access
+	 * already reaches the whole site.
+	 *
+	 * @return bool
+	 */
+	public static function unrestricted(): bool {
+		return current_user_can( 'manage_options' ) || self::cli_without_user();
+	}
+
+	/**
+	 * Whether synced HTML may skip kses: the current user has unfiltered_html,
+	 * or WP-CLI runs without --user.
+	 *
+	 * @return bool
+	 */
+	public static function unfiltered_html(): bool {
+		return current_user_can( 'unfiltered_html' ) || self::cli_without_user();
+	}
+
+	/**
+	 * Whether this is WP-CLI with no user set.
+	 *
+	 * @return bool
+	 */
+	private static function cli_without_user(): bool {
+		return defined( 'WP_CLI' ) && WP_CLI && 0 === get_current_user_id();
+	}
+
+	/**
 	 * Adds the sync capability to users who can manage options.
 	 *
 	 * @param array<string, bool> $allcaps The user's capabilities.
