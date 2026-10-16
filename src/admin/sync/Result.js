@@ -13,7 +13,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { fetchJobItems } from '../api';
 import ErrorNotice from '../components/ErrorNotice';
 import { jobStatusLabel, summaryText } from '../words';
-import UndoButton from './UndoButton';
+import UndoButton, { UndoWindow } from './UndoButton';
 
 /**
  * Step 5: what the sync did, with undo.
@@ -73,6 +73,7 @@ export default function Result( { flow } ) {
 				{ undone && <UndoReport result={ undone } /> }
 				{ isInitiator && problems === null && <Spinner /> }
 				{ problems?.length > 0 && <Problems items={ problems } /> }
+				<UndoWindow job={ job } />
 				<Flex justify="space-between" className="jcore-silta-actions">
 					<UndoButton
 						job={ job }

@@ -16,6 +16,7 @@ use Jcore\Silta\Remote\Connections;
 use Jcore\Silta\Settings;
 use Jcore\Silta\Site;
 use Jcore\Silta\Sync\Context;
+use Jcore\Silta\Sync\Snapshots;
 use Jcore\Silta\Util;
 use WP_Error;
 
@@ -163,8 +164,10 @@ final class Runner {
 					'dependencies' => ! isset( $options['dependencies'] ) || ! empty( $options['dependencies'] ),
 				),
 				'state'        => array(
-					'phase' => 'resolve',
-					'level' => 0,
+					'phase'     => 'resolve',
+					'level'     => 0,
+					// A push is undone from the other site's snapshots, kept as long as it says.
+					'undo_days' => 'push' === $direction ? max( 0, min( 365, (int) ( $handshake['undo_days'] ?? 0 ) ) ) : 0,
 				),
 			)
 		);
@@ -537,6 +540,54 @@ final class Runner {
 			'user'         => $user ? $user->display_name : (string) ( $job['options']['by'] ?? '' ),
 			'created_at'   => (string) $job['created_at'],
 			'updated_at'   => (string) $job['updated_at'],
+		) + self::undo_window( $job );
+	}
+
+	/**
+	 * Works out until when a job can be undone, from how long its target
+	 * keeps snapshots.
+	 *
+	 * A pull or a received sync has its snapshots here, so the oldest one
+	 * tells. A push has them on the other site; the job's start is the
+	 * earliest any of them can have been taken, so the date is on the safe
+	 * side. It stays unknown when that site didn't say (an older version).
+	 *
+	 * @param array<string, mixed> $job Job row.
+	 *
+	 * @return array{undo_until: string, undo_expired: bool} GMT datetime or '', and whether the snapshots are gone.
+	 */
+	private static function undo_window( array $job ): array {
+		$written = in_array( $job['status'], array( 'done', 'cancelled', 'failed', 'received' ), true );
+
+		if ( 'initiator' === $job['role'] && 'push' === $job['direction'] ) {
+			$days  = (int) ( $job['state']['undo_days'] ?? 0 );
+			$start = $days > 0 ? (string) $job['created_at'] : '';
+		} else {
+			$days  = (int) Settings::get( 'snapshot_days' );
+			$start = Snapshots::oldest( (string) $job['uuid'] );
+			if ( '' === $start ) {
+				// Either nothing was written, or the snapshots were pruned.
+				$pruned = strtotime( $job['updated_at'] . ' UTC' ) + $days * DAY_IN_SECONDS < time();
+
+				return array(
+					'undo_until'   => '',
+					'undo_expired' => $written && $pruned,
+				);
+			}
+		}
+
+		if ( '' === $start ) {
+			return array(
+				'undo_until'   => '',
+				'undo_expired' => false,
+			);
+		}
+
+		$until = strtotime( $start . ' UTC' ) + $days * DAY_IN_SECONDS;
+
+		return array(
+			'undo_until'   => gmdate( 'Y-m-d H:i:s', $until ),
+			'undo_expired' => $written && $until < time(),
 		);
 	}
 

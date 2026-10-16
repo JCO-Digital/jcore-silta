@@ -11,7 +11,7 @@ import {
 } from '../words';
 import ItemDiff from './ItemDiff';
 import MatchOverride from './MatchOverride';
-import { blockingError, canInclude } from './items';
+import { blockingError, canInclude, itemTitle } from './items';
 
 /**
  * One item in the review: include checkbox, what will happen and why.
@@ -26,7 +26,7 @@ import { blockingError, canInclude } from './items';
 export default function ReviewItem( { item, flow, keys, onPatch } ) {
 	const [ showDiff, setShowDiff ] = useState( false );
 	const isOrphan = item.object_type === 'orphan';
-	const title = item.title || item.plan?.title || item.key;
+	const title = itemTitle( item );
 	const blocked = blockingError( item );
 	const isDiffMode = !! flow.job?.options?.diff;
 	const type =
@@ -101,7 +101,11 @@ export default function ReviewItem( { item, flow, keys, onPatch } ) {
 				<SectionErrors item={ item } />
 				<Missing item={ item } keys={ keys } />
 				{ item.object_type === 'post' && ! blocked && (
-					<MatchOverride item={ item } onPatch={ onPatch } />
+					<MatchOverride
+						item={ item }
+						flow={ flow }
+						onPatch={ onPatch }
+					/>
 				) }
 				{ isDiffMode && item.action === 'create' && (
 					<p className="description">

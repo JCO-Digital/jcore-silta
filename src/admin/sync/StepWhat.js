@@ -5,13 +5,15 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Flex,
+	ProgressBar,
 	Spinner,
 } from '@wordpress/components';
-import { useEffect, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 
 import { errorMessage, get } from '../api';
 import ErrorNotice from '../components/ErrorNotice';
+import { isOutdated } from '../words';
 import PostBrowser from './PostBrowser';
 import SelectedSummary from './SelectedSummary';
 
@@ -86,6 +88,18 @@ export default function StepWhat( { flow } ) {
 					]
 				: current[ key ].filter( ( entry ) => entry !== value ),
 		} ) );
+
+	const addPosts = ( items ) =>
+		setSelection( ( current ) => {
+			const known = new Set( current.posts.map( ( entry ) => entry.id ) );
+			return {
+				...current,
+				posts: [
+					...current.posts,
+					...items.filter( ( item ) => ! known.has( item.id ) ),
+				],
+			};
+		} );
 
 	// Single posts of a type synced in full would be listed twice.
 	const toggleWhole = ( name, checked ) =>
@@ -169,6 +183,7 @@ export default function StepWhat( { flow } ) {
 												)
 											}
 											onTogglePost={ togglePost }
+											onAddPosts={ addPosts }
 										/>
 									) ) }
 								</ul>
@@ -214,6 +229,155 @@ export default function StepWhat( { flow } ) {
 	);
 }
 
+const SCAN_PAGE = 50;
+
+/**
+ * Finds the posts of a type that are new or changed compared with the target,
+ * page by page, and adds them to the selection.
+ *
+ * @param {Object}                       props            Props.
+ * @param {Object}                       props.flow       Sync flow.
+ * @param {Object}                       props.type       Post type.
+ * @param {boolean}                      props.disabled   Whether there is nothing to find.
+ * @param {(...args: unknown[]) => void} props.onAddPosts Called with the posts found.
+ * @return {Element} Button and outcome.
+ */
+function FindOutdated( { flow, type, disabled, onAddPosts } ) {
+	const [ checked, setChecked ] = useState( null );
+	const [ found, setFound ] = useState( null );
+	const [ error, setError ] = useState( '' );
+	const alive = useRef( true );
+
+	useEffect(
+		() => () => {
+			alive.current = false;
+		},
+		[]
+	);
+
+	const find = async () => {
+		setError( '' );
+		setFound( null );
+		setChecked( 0 );
+		const outdated = [];
+		try {
+			for ( let page = 1; ; page++ ) {
+				const response = await get( '/source/posts', {
+					connection: flow.connectionId,
+					direction: flow.direction,
+					post_type: type.name,
+					page,
+					per_page: SCAN_PAGE,
+					status: 1,
+				} );
+				if ( ! alive.current ) {
+					return;
+				}
+				if ( response.status_error ) {
+					throw new Error( response.status_error );
+				}
+				const items = response.items || [];
+				if ( items.length && items.every( ( item ) => ! item.sync ) ) {
+					throw new Error(
+						__(
+							'The other site can’t be compared yet. Update Silta on both sites.',
+							'jcore-silta'
+						)
+					);
+				}
+				outdated.push(
+					...items.filter( ( item ) =>
+						isOutdated( item.sync?.state )
+					)
+				);
+				setChecked( ( value ) => value + items.length );
+				if ( ! items.length || page >= ( response.pages || 1 ) ) {
+					break;
+				}
+			}
+			onAddPosts( outdated );
+			setFound( outdated.length );
+		} catch ( e ) {
+			if ( alive.current ) {
+				setError( errorMessage( e ) );
+			}
+		} finally {
+			if ( alive.current ) {
+				setChecked( null );
+			}
+		}
+	};
+
+	const isBusy = checked !== null;
+
+	return (
+		<>
+			<Button
+				variant="tertiary"
+				size="compact"
+				isBusy={ isBusy }
+				disabled={ disabled || isBusy }
+				accessibleWhenDisabled
+				onClick={ find }
+			>
+				{ isBusy
+					? sprintf(
+							/* translators: 1: posts checked so far, 2: all posts. */
+							__( 'Comparing %1$d of %2$d…', 'jcore-silta' ),
+							checked,
+							type.count
+						)
+					: __( 'Select new and changed', 'jcore-silta' ) }
+			</Button>
+			{ isBusy && (
+				<ProgressBar
+					className="jcore-silta-types__progress"
+					aria-label={ sprintf(
+						/* translators: %s: target site name. */
+						__( 'Comparing with %s', 'jcore-silta' ),
+						flow.targetLabel
+					) }
+					value={
+						type.count
+							? Math.min(
+									100,
+									Math.round( ( checked / type.count ) * 100 )
+								)
+							: undefined
+					}
+				/>
+			) }
+			<span className="jcore-silta-types__found" role="status">
+				{ found === 0 &&
+					sprintf(
+						/* translators: %s: target site name. */
+						__( 'All up to date on %s.', 'jcore-silta' ),
+						flow.targetLabel
+					) }
+				{ found > 0 &&
+					sprintf(
+						/* translators: %d: number of posts. */
+						_n(
+							'Found %d new or changed post.',
+							'Found %d new or changed posts.',
+							found,
+							'jcore-silta'
+						),
+						found
+					) }
+			</span>
+			{ error && (
+				<div className="jcore-silta-types__error">
+					<ErrorNotice
+						error={ error }
+						onRemove={ () => setError( '' ) }
+					/>
+				</div>
+			) }
+		</>
+	);
+}
+
 /**
  * One post type: sync all of it, or open it to pick posts.
  *
@@ -224,6 +388,7 @@ export default function StepWhat( { flow } ) {
  * @param {(...args: unknown[]) => void} props.onOpen        Toggles the browser.
  * @param {(...args: unknown[]) => void} props.onToggleWhole Called with checked.
  * @param {(...args: unknown[]) => void} props.onTogglePost  Called with ( post, checked ).
+ * @param {(...args: unknown[]) => void} props.onAddPosts    Called with posts to add.
  * @return {Element} Row.
  */
 function PostTypeRow( {
@@ -233,6 +398,7 @@ function PostTypeRow( {
 	onOpen,
 	onToggleWhole,
 	onTogglePost,
+	onAddPosts,
 } ) {
 	const isWhole = flow.selection.post_types.includes( type.name );
 	const picked = flow.selection.posts.filter(
@@ -275,6 +441,12 @@ function PostTypeRow( {
 						? __( 'Close', 'jcore-silta' )
 						: __( 'Choose posts', 'jcore-silta' ) }
 				</Button>
+				<FindOutdated
+					flow={ flow }
+					type={ type }
+					disabled={ isWhole || ! type.count }
+					onAddPosts={ onAddPosts }
+				/>
 				{ picked > 0 && ! isWhole && (
 					<span className="jcore-silta-types__picked">
 						{ sprintf(

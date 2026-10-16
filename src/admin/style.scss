@@ -283,6 +283,20 @@ $jcore-silta-red: #d63638;
 	font-weight: 600;
 }
 
+.jcore-silta-types__found {
+	color: $jcore-silta-gray;
+}
+
+.jcore-silta-types__error {
+	flex-basis: 100%;
+}
+
+.jcore-silta-types__progress {
+	flex-basis: 100%;
+	width: 100%;
+	max-width: none;
+}
+
 .jcore-silta-browser {
 	margin-top: 12px;
 	padding: 12px;
@@ -311,6 +325,11 @@ $jcore-silta-red: #d63638;
 	gap: 8px;
 	margin: 0;
 	padding: 6px 0;
+
+	.jcore-silta-badge {
+		flex: none;
+		margin-left: auto;
+	}
 }
 
 .jcore-silta-thumb {
@@ -396,6 +415,10 @@ $jcore-silta-red: #d63638;
 	list-style: none;
 }
 
+.jcore-silta-summary li {
+	margin: 0;
+}
+
 .jcore-silta-summary__item {
 	display: flex;
 	flex-direction: column;
@@ -404,6 +427,31 @@ $jcore-silta-red: #d63638;
 	padding: 8px 12px;
 	border: 1px solid $jcore-silta-border;
 	border-left-width: 4px;
+	background: #fff;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+
+	&:hover:not(:disabled),
+	&.is-active {
+		border-top-color: $jcore-silta-blue;
+		border-right-color: $jcore-silta-blue;
+		border-bottom-color: $jcore-silta-blue;
+	}
+
+	&.is-active {
+		background: #f0f6fc;
+	}
+
+	&:focus-visible {
+		outline: 2px solid $jcore-silta-blue;
+		outline-offset: 1px;
+	}
+
+	&:disabled {
+		cursor: default;
+	}
 
 	&.is-create {
 		border-left-color: $jcore-silta-green;
@@ -434,6 +482,18 @@ $jcore-silta-red: #d63638;
 
 .jcore-silta-summary__label {
 	color: $jcore-silta-gray;
+}
+
+.jcore-silta-review-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 24px;
+	margin-bottom: 16px;
+
+	.components-search-control {
+		flex: 0 1 360px;
+	}
 }
 
 .jcore-silta-bulk-sections {
@@ -525,6 +585,24 @@ $jcore-silta-red: #d63638;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
+}
+
+.jcore-silta-override__search {
+	width: 100%;
+	max-width: 480px;
+}
+
+.jcore-silta-override__results {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+
+	li {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0;
+	}
 }
 
 .jcore-silta-override__form {
@@ -780,4 +858,11 @@ $jcore-silta-red: #d63638;
 	padding: 12px;
 	border-left: 4px solid $jcore-silta-green;
 	background: #edfaef;
+}
+
+.jcore-silta-undo-window {
+	display: block;
+	margin-top: 4px;
+	font-size: 12px;
+	color: $jcore-silta-gray;
 }

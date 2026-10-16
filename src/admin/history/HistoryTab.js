@@ -13,7 +13,7 @@ import Badge from '../components/Badge';
 import ErrorNotice from '../components/ErrorNotice';
 import Pagination from '../components/Pagination';
 import { UndoReport } from '../sync/Result';
-import UndoButton from '../sync/UndoButton';
+import UndoButton, { UndoWindow } from '../sync/UndoButton';
 import {
 	formatDate,
 	jobStatusLabel,
@@ -146,6 +146,7 @@ function HistoryRow( { job, onOpen, onUndone } ) {
 				<Badge tone={ jobStatusTone( job.status ) }>
 					{ jobStatusLabel( job.status ) }
 				</Badge>
+				<UndoWindow job={ job } />
 			</td>
 			<td>{ summaryText( job.summary ) || '—' }</td>
 			<td className="jcore-silta-history__actions">

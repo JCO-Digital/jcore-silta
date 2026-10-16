@@ -7,9 +7,11 @@
 
 namespace Jcore\Silta\Rest;
 
+use Jcore\Silta\Endpoint\Endpoint;
 use Jcore\Silta\Endpoint\Local;
 use Jcore\Silta\Endpoint\Remote;
 use Jcore\Silta\Remote\Connections;
+use Jcore\Silta\Util;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -87,6 +89,10 @@ final class Source_Controller extends Controller {
 							'type'  => 'array',
 							'items' => array( 'type' => 'integer' ),
 						),
+						'status'    => array(
+							'type'    => 'boolean',
+							'default' => false,
+						),
 					)
 				),
 			)
@@ -148,18 +154,71 @@ final class Source_Controller extends Controller {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such connection.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
-		$endpoint = 'push' === $request['direction'] ? new Local( (string) $connection['site'] ) : new Remote( $connection );
-
-		return $this->respond(
-			$endpoint->query(
-				array(
-					'post_type' => (string) $request['post_type'],
-					'search'    => (string) $request['search'],
-					'page'      => (int) $request['page'],
-					'per_page'  => (int) $request['per_page'],
-					'include'   => (array) ( $request['include'] ?? array() ),
-				)
+		$local  = new Local( (string) $connection['site'] );
+		$remote = new Remote( $connection );
+		$source = 'push' === $request['direction'] ? $local : $remote;
+		$result = $source->query(
+			array(
+				'post_type' => (string) $request['post_type'],
+				'search'    => (string) $request['search'],
+				'page'      => (int) $request['page'],
+				'per_page'  => (int) $request['per_page'],
+				'include'   => (array) ( $request['include'] ?? array() ),
+				'hashes'    => (bool) $request['status'],
 			)
 		);
+
+		if ( is_wp_error( $result ) || ! $request['status'] ) {
+			return $this->respond( $result );
+		}
+
+		return $this->respond( self::with_status( $result, 'push' === $request['direction'] ? $remote : $local ) );
+	}
+
+	/**
+	 * Adds to each post how it compares with its copy on the target: not
+	 * synced yet, up to date, or changed on one side or both since the last sync.
+	 *
+	 * A source that sends no hashes (an older version) gets no state, and a
+	 * target that can't be reached leaves the list as it is with an error.
+	 *
+	 * @param array<string, mixed> $result Query result, with a hash per item.
+	 * @param Endpoint             $target Target endpoint.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function with_status( array $result, Endpoint $target ): array {
+		$items = array();
+		foreach ( (array) $result['items'] as $item ) {
+			if ( is_string( $item['hash'] ?? null ) ) {
+				$items[] = array(
+					'key'  => Util::key( 'post', (int) $item['id'] ),
+					'hash' => $item['hash'],
+				);
+			}
+		}
+
+		$statuses = array();
+		if ( ! empty( $items ) ) {
+			$response = $target->status( array( 'items' => $items ) );
+			if ( is_wp_error( $response ) ) {
+				$result['status_error'] = $response->get_error_message();
+			} else {
+				$statuses = (array) ( $response['statuses'] ?? array() );
+			}
+		}
+
+		foreach ( $result['items'] as $index => $item ) {
+			$status = $statuses[ Util::key( 'post', (int) $item['id'] ) ] ?? null;
+			if ( is_array( $status ) ) {
+				$result['items'][ $index ]['sync'] = array(
+					'state'     => (string) ( $status['state'] ?? '' ),
+					'synced_at' => (string) ( $status['synced_at'] ?? '' ),
+				);
+			}
+			unset( $result['items'][ $index ]['hash'] );
+		}
+
+		return $result;
 	}
 }

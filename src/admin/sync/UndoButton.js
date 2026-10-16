@@ -5,6 +5,20 @@ import { __, sprintf } from '@wordpress/i18n';
 import { errorMessage, post } from '../api';
 import ConfirmModal from '../components/ConfirmModal';
 import { site } from '../config';
+import { formatDate, parseGmt } from '../words';
+
+/**
+ * Whether a job has written something that wasn't undone yet.
+ *
+ * @param {Object} job Job.
+ * @return {boolean} Written.
+ */
+function hasWritten( job ) {
+	if ( job.role === 'target' ) {
+		return job.status !== 'undone';
+	}
+	return [ 'done', 'running', 'cancelled', 'failed' ].includes( job.status );
+}
 
 /**
  * Whether a job can be undone.
@@ -12,11 +26,42 @@ import { site } from '../config';
  * @param {Object} job Job.
  * @return {boolean} Undoable.
  */
-export function canUndo( job ) {
-	if ( job.role === 'target' ) {
-		return job.status !== 'undone';
+export const canUndo = ( job ) => hasWritten( job ) && ! job.undo_expired;
+
+/**
+ * Says until when a job can be undone, or that it no longer can.
+ *
+ * @param {Object} props     Props.
+ * @param {Object} props.job Job.
+ * @return {Element|null} Note.
+ */
+export function UndoWindow( { job } ) {
+	if ( ! hasWritten( job ) ) {
+		return null;
 	}
-	return [ 'done', 'running', 'cancelled', 'failed' ].includes( job.status );
+	if ( job.undo_expired ) {
+		return (
+			<span className="jcore-silta-undo-window">
+				{ __(
+					'Can no longer be undone: the snapshots were removed.',
+					'jcore-silta'
+				) }
+			</span>
+		);
+	}
+	const until = parseGmt( job.undo_until );
+	if ( ! until ) {
+		return null;
+	}
+	return (
+		<span className="jcore-silta-undo-window">
+			{ sprintf(
+				/* translators: %s: date and time. */
+				__( 'Can be undone until %s.', 'jcore-silta' ),
+				formatDate( until )
+			) }
+		</span>
+	);
 }
 
 /**

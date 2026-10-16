@@ -99,6 +99,22 @@ final class Snapshots {
 	}
 
 	/**
+	 * Returns when a job's oldest snapshot was taken, which is the first one
+	 * pruning removes.
+	 *
+	 * @param string $job Job UUID.
+	 *
+	 * @return string GMT datetime, or '' when the job has no snapshots.
+	 */
+	public static function oldest( string $job ): string {
+		global $wpdb;
+
+		return (string) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare( 'SELECT MIN(created_at) FROM %i WHERE job_uuid = %s', Database::table( 'snapshots' ), $job )
+		);
+	}
+
+	/**
 	 * Undoes a job: restores what it overwrote, removes what it created and
 	 * untrashes what it trashed, newest change first.
 	 *
