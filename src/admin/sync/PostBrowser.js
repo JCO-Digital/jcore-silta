@@ -3,9 +3,10 @@ import { useEffect, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { errorMessage, get } from '../api';
+import Badge from '../components/Badge';
 import ErrorNotice from '../components/ErrorNotice';
 import Pagination from '../components/Pagination';
-import { formatDate, parseGmt } from '../words';
+import { formatDate, parseGmt, syncStateLabel, syncStateTone } from '../words';
 
 const PER_PAGE = 20;
 
@@ -26,6 +27,7 @@ export default function PostBrowser( { flow, type, isWhole, onTogglePost } ) {
 	const [ result, setResult ] = useState( null );
 	const [ error, setError ] = useState( '' );
 	const [ isLoading, setIsLoading ] = useState( false );
+	const [ states, setStates ] = useState( {} );
 
 	// Wait for a pause in typing before searching.
 	useEffect( () => {
@@ -55,6 +57,42 @@ export default function PostBrowser( { flow, type, isWhole, onTogglePost } ) {
 			alive = false;
 		};
 	}, [ flow.connectionId, flow.direction, type.name, query, page ] );
+
+	// Comparing with the target takes longer, so the list shows first and the
+	// states follow. Without them the list still works.
+	const ids = ( result?.items || [] ).map( ( item ) => item.id ).join( ',' );
+	useEffect( () => {
+		if ( ! ids ) {
+			return;
+		}
+		let alive = true;
+		const include = ids.split( ',' ).map( Number );
+		get( '/source/posts', {
+			connection: flow.connectionId,
+			direction: flow.direction,
+			include,
+			per_page: include.length,
+			status: 1,
+		} )
+			.then( ( response ) => {
+				if ( ! alive ) {
+					return;
+				}
+				const found = {};
+				response.items.forEach( ( item ) => {
+					if ( item.sync?.state ) {
+						found[ item.id ] = item.sync.state;
+					}
+				} );
+				setStates( ( current ) => ( { ...current, ...found } ) );
+			} )
+			.catch( () => {
+				// The states are a hint; the review compares everything anyway.
+			} );
+		return () => {
+			alive = false;
+		};
+	}, [ flow.connectionId, flow.direction, ids ] );
 
 	const selectedIds = new Set(
 		flow.selection.posts.map( ( item ) => item.id )
@@ -117,6 +155,15 @@ export default function PostBrowser( { flow, type, isWhole, onTogglePost } ) {
 										onTogglePost( item, checked )
 									}
 								/>
+								{ states[ item.id ] && (
+									<Badge
+										tone={ syncStateTone(
+											states[ item.id ]
+										) }
+									>
+										{ syncStateLabel( states[ item.id ] ) }
+									</Badge>
+								) }
 							</li>
 						) ) }
 					</ul>

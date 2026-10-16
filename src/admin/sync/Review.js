@@ -3,8 +3,10 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
+	CheckboxControl,
 	Flex,
 	Notice,
+	SearchControl,
 	Spinner,
 } from '@wordpress/components';
 import { useEffect, useMemo, useState } from '@wordpress/element';
@@ -15,7 +17,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import ErrorNotice from '../components/ErrorNotice';
 import BulkSections from './BulkSections';
 import ReviewGroup from './ReviewGroup';
-import { canInclude, isSkippedConflict } from './items';
+import { isSkippedConflict, itemCategory, itemTitle } from './items';
 
 /**
  * Step 4: review what the sync will do, adjust it, then run it.
@@ -30,6 +32,9 @@ export default function Review( { flow } ) {
 	const [ error, setError ] = useState( '' );
 	const [ confirmRun, setConfirmRun ] = useState( false );
 	const [ reload, setReload ] = useState( 0 );
+	const [ filter, setFilter ] = useState( '' );
+	const [ search, setSearch ] = useState( '' );
+	const [ hideUnchanged, setHideUnchanged ] = useState( true );
 
 	useEffect( () => {
 		let alive = true;
@@ -138,7 +143,43 @@ export default function Review( { flow } ) {
 		keys,
 		onPatch: patchItem,
 		onPatchMany: patchMany,
+		isFiltered: !! filter || !! search.trim(),
+		onShowHidden: () => setHideUnchanged( false ),
 	};
+
+	// Narrows a group to what the summary filter and the search let through.
+	// Without either, unchanged items can be tucked away; a filter or search
+	// is explicit, so it shows everything that matches.
+	const query = search.trim().toLowerCase();
+	const view = ( list ) => {
+		const matching = list.filter(
+			( item ) =>
+				( ! filter || itemCategory( item ) === filter ) &&
+				( ! query || itemTitle( item ).toLowerCase().includes( query ) )
+		);
+		const visible =
+			! groupProps.isFiltered && hideUnchanged
+				? matching.filter(
+						( item ) => itemCategory( item ) !== 'unchanged'
+					)
+				: matching;
+		return {
+			items: list,
+			visible,
+			hidden: matching.length - visible.length,
+		};
+	};
+	const views = {
+		selected: view( selected ),
+		dependencies: view( dependencies ),
+		orphans: view( orphans ),
+	};
+	const noMatch =
+		groupProps.isFiltered &&
+		Object.values( views ).every( ( entry ) => ! entry.visible.length );
+	const hasUnchanged = items.some(
+		( item ) => itemCategory( item ) === 'unchanged'
+	);
 
 	return (
 		<>
@@ -154,7 +195,35 @@ export default function Review( { flow } ) {
 							flow.setError( '' );
 						} }
 					/>
-					<Summary items={ items } />
+					<Summary
+						items={ items }
+						filter={ filter }
+						onFilter={ setFilter }
+					/>
+					<div className="jcore-silta-review-tools">
+						<SearchControl
+							__nextHasNoMarginBottom
+							label={ __( 'Search the items', 'jcore-silta' ) }
+							value={ search }
+							onChange={ setSearch }
+						/>
+						{ hasUnchanged && ! groupProps.isFiltered && (
+							<CheckboxControl
+								__nextHasNoMarginBottom
+								label={ __(
+									'Hide items without changes',
+									'jcore-silta'
+								) }
+								checked={ hideUnchanged }
+								onChange={ setHideUnchanged }
+							/>
+						) }
+					</div>
+					{ noMatch && (
+						<p className="description">
+							{ __( 'No items match.', 'jcore-silta' ) }
+						</p>
+					) }
 					{ job.options?.diff && (
 						<BulkSections
 							jobId={ job.id }
@@ -218,12 +287,16 @@ export default function Review( { flow } ) {
 				</CardBody>
 			</Card>
 
-			<ReviewGroup
-				{ ...groupProps }
-				title={ __( 'Selected', 'jcore-silta' ) }
-				items={ selected }
-			/>
-			{ dependencies.length > 0 && (
+			{ ( ! groupProps.isFiltered ||
+				views.selected.visible.length > 0 ) && (
+				<ReviewGroup
+					{ ...groupProps }
+					{ ...views.selected }
+					title={ __( 'Selected', 'jcore-silta' ) }
+				/>
+			) }
+			{ views.dependencies.visible.length + views.dependencies.hidden >
+				0 && (
 				<ReviewGroup
 					{ ...groupProps }
 					title={ __( 'Dependencies', 'jcore-silta' ) }
@@ -231,10 +304,10 @@ export default function Review( { flow } ) {
 						'Media, terms and posts the selected content refers to, which the target does not have yet.',
 						'jcore-silta'
 					) }
-					items={ dependencies }
+					{ ...views.dependencies }
 				/>
 			) }
-			{ orphans.length > 0 && (
+			{ views.orphans.visible.length + views.orphans.hidden > 0 && (
 				<ReviewGroup
 					{ ...groupProps }
 					title={ __( 'Removed on the source', 'jcore-silta' ) }
@@ -247,7 +320,7 @@ export default function Review( { flow } ) {
 						flow.targetLabel,
 						flow.sourceLabel
 					) }
-					items={ orphans }
+					{ ...views.orphans }
 				/>
 			) }
 
@@ -321,13 +394,15 @@ export default function Review( { flow } ) {
 }
 
 /**
- * Counts what the sync will do.
+ * Counts what the sync will do. Each count also filters the items.
  *
- * @param {Object} props       Props.
- * @param {Array}  props.items All items.
+ * @param {Object}                       props          Props.
+ * @param {Array}                        props.items    All items.
+ * @param {string}                       props.filter   Category shown, or '' for all.
+ * @param {(...args: unknown[]) => void} props.onFilter Called with a category, or ''.
  * @return {Element} Summary.
  */
-function Summary( { items } ) {
+function Summary( { items, filter, onFilter } ) {
 	const counts = {
 		create: 0,
 		update: 0,
@@ -336,24 +411,13 @@ function Summary( { items } ) {
 		problems: 0,
 		trash: 0,
 	};
+	const present = new Set();
 	items.forEach( ( item ) => {
-		if ( ! canInclude( item ) ) {
-			counts.problems++;
-			return;
-		}
-		if ( ! item.included ) {
-			return;
-		}
-		if ( item.object_type === 'orphan' ) {
-			counts.trash++;
-		} else if ( isSkippedConflict( item ) ) {
-			counts.conflicts++;
-		} else if ( item.action === 'create' ) {
-			counts.create++;
-		} else if ( item.action === 'update' ) {
-			counts.update++;
-		} else {
-			counts.unchanged++;
+		const category = itemCategory( item );
+		present.add( category );
+		// Problems can't be included, so they count either way.
+		if ( item.included || category === 'problems' ) {
+			counts[ category ]++;
 		}
 	} );
 
@@ -367,20 +431,28 @@ function Summary( { items } ) {
 	};
 
 	return (
-		<ul className="jcore-silta-summary">
+		<ul
+			className="jcore-silta-summary"
+			aria-label={ __( 'Show only', 'jcore-silta' ) }
+		>
 			{ Object.entries( counts ).map( ( [ key, count ] ) => (
-				<li
-					key={ key }
-					className={ `jcore-silta-summary__item is-${ key }${
-						count ? '' : ' is-zero'
-					}` }
-				>
-					<span className="jcore-silta-summary__count">
-						{ count }
-					</span>
-					<span className="jcore-silta-summary__label">
-						{ labels[ key ] }
-					</span>
+				<li key={ key }>
+					<button
+						type="button"
+						className={ `jcore-silta-summary__item is-${ key }${
+							count ? '' : ' is-zero'
+						}${ filter === key ? ' is-active' : '' }` }
+						aria-pressed={ filter === key }
+						disabled={ ! present.has( key ) && filter !== key }
+						onClick={ () => onFilter( filter === key ? '' : key ) }
+					>
+						<span className="jcore-silta-summary__count">
+							{ count }
+						</span>
+						<span className="jcore-silta-summary__label">
+							{ labels[ key ] }
+						</span>
+					</button>
 				</li>
 			) ) }
 		</ul>

@@ -37,6 +37,36 @@ export const isSkippedConflict = ( item ) =>
 	item.object_type !== 'orphan' && item.conflict && ! item.confirmed;
 
 /**
+ * The title to show for an item.
+ *
+ * @param {Object} item Item.
+ * @return {string} Title.
+ */
+export const itemTitle = ( item ) => item.title || item.plan?.title || item.key;
+
+/**
+ * Where an item counts in the review summary.
+ *
+ * @param {Object} item Item.
+ * @return {string} create, update, unchanged, conflicts, problems or trash.
+ */
+export function itemCategory( item ) {
+	if ( ! canInclude( item ) ) {
+		return 'problems';
+	}
+	if ( item.object_type === 'orphan' ) {
+		return 'trash';
+	}
+	if ( isSkippedConflict( item ) ) {
+		return 'conflicts';
+	}
+	if ( item.action === 'create' || item.action === 'update' ) {
+		return item.action;
+	}
+	return 'unchanged';
+}
+
+/**
  * Whether a section is chosen. A chosen group name (fields, meta, terms)
  * covers every section below it, as on the server.
  *

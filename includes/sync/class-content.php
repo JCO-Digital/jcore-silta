@@ -124,7 +124,8 @@ final class Content {
 	/**
 	 * Searches posts for the picker.
 	 *
-	 * @param array<string, mixed> $args post_type, search, page, per_page, include.
+	 * @param array<string, mixed> $args post_type, search, page, per_page, include, and hashes to add
+	 *                                   each post's state hash for comparing it with the other site.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -171,7 +172,7 @@ final class Content {
 				continue;
 			}
 			$language = Polylang::post( $post->ID );
-			$items[]  = array(
+			$item     = array(
 				'id'           => $post->ID,
 				'title'        => '' !== $post->post_title ? $post->post_title : $post->post_name,
 				'post_type'    => $post->post_type,
@@ -183,6 +184,11 @@ final class Content {
 				'thumb'        => 'attachment' === $post->post_type ? (string) wp_get_attachment_image_url( $post->ID, 'thumbnail', true ) : (string) get_the_post_thumbnail_url( $post, 'thumbnail' ),
 				'link'         => 'attachment' === $post->post_type ? (string) wp_get_attachment_url( $post->ID ) : (string) get_permalink( $post ),
 			);
+			if ( ! empty( $args['hashes'] ) ) {
+				$state        = State::post( $post->ID );
+				$item['hash'] = null === $state ? '' : State::hash( $state );
+			}
+			$items[] = $item;
 		}
 
 		return array(

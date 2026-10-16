@@ -16,29 +16,39 @@ const PAGE = 50;
 /**
  * One group of review rows, with bulk include buttons.
  *
- * @param {Object}                       props             Props.
- * @param {string}                       props.title       Group title.
- * @param {string}                       props.description Explanation.
- * @param {Array}                        props.items       Items in the group.
- * @param {Object}                       props.flow        Sync flow.
- * @param {Set}                          props.keys        Keys of every item in the job.
- * @param {(...args: unknown[]) => void} props.onPatch     Changes one item.
- * @param {(...args: unknown[]) => void} props.onPatchMany Changes several items.
+ * @param {Object}                       props              Props.
+ * @param {string}                       props.title        Group title.
+ * @param {string}                       props.description  Explanation.
+ * @param {Array}                        props.items        Items in the group.
+ * @param {Array}                        props.visible      Items the filters let through.
+ * @param {number}                       props.hidden       Unchanged items left out.
+ * @param {boolean}                      props.isFiltered   Whether a filter or search is on.
+ * @param {(...args: unknown[]) => void} props.onShowHidden Shows the unchanged items.
+ * @param {Object}                       props.flow         Sync flow.
+ * @param {Set}                          props.keys         Keys of every item in the job.
+ * @param {(...args: unknown[]) => void} props.onPatch      Changes one item.
+ * @param {(...args: unknown[]) => void} props.onPatchMany  Changes several items.
  * @return {Element} Group.
  */
 export default function ReviewGroup( {
 	title,
 	description,
 	items,
+	visible,
+	hidden,
+	isFiltered,
+	onShowHidden,
 	flow,
 	keys,
 	onPatch,
 	onPatchMany,
 } ) {
 	const [ shown, setShown ] = useState( PAGE );
-	const includable = items.filter( canInclude );
+	// With a filter on, the bulk buttons act on what is shown.
+	const targets = isFiltered ? visible : items;
+	const includable = targets.filter( canInclude );
 	const includedCount = items.filter( ( item ) => item.included ).length;
-	const left = items.length - shown;
+	const left = visible.length - shown;
 
 	return (
 		<Card className="jcore-silta-group">
@@ -72,19 +82,23 @@ export default function ReviewGroup( {
 							)
 						}
 					>
-						{ __( 'Include all', 'jcore-silta' ) }
+						{ isFiltered
+							? __( 'Include these', 'jcore-silta' )
+							: __( 'Include all', 'jcore-silta' ) }
 					</Button>
 					<Button
 						size="compact"
 						variant="secondary"
 						onClick={ () =>
 							onPatchMany(
-								items.filter( ( item ) => item.included ),
+								targets.filter( ( item ) => item.included ),
 								{ included: false }
 							)
 						}
 					>
-						{ __( 'Include none', 'jcore-silta' ) }
+						{ isFiltered
+							? __( 'Exclude these', 'jcore-silta' )
+							: __( 'Include none', 'jcore-silta' ) }
 					</Button>
 				</Flex>
 			</CardHeader>
@@ -95,7 +109,7 @@ export default function ReviewGroup( {
 					</p>
 				) }
 				<ul className="jcore-silta-items">
-					{ items.slice( 0, shown ).map( ( item ) => (
+					{ visible.slice( 0, shown ).map( ( item ) => (
 						<ReviewItem
 							key={ item.id }
 							item={ item }
@@ -105,6 +119,23 @@ export default function ReviewGroup( {
 						/>
 					) ) }
 				</ul>
+				{ hidden > 0 && (
+					<p className="description">
+						{ sprintf(
+							/* translators: %d: number of items. */
+							_n(
+								'%d item without changes is hidden.',
+								'%d items without changes are hidden.',
+								hidden,
+								'jcore-silta'
+							),
+							hidden
+						) }{ ' ' }
+						<Button variant="link" onClick={ onShowHidden }>
+							{ __( 'Show them', 'jcore-silta' ) }
+						</Button>
+					</p>
+				) }
 				{ left > 0 && (
 					<Button
 						variant="secondary"

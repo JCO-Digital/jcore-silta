@@ -7,6 +7,7 @@ import ConnectionsTab from './connections/ConnectionsTab';
 import HistoryTab from './history/HistoryTab';
 import SettingsTab from './settings/SettingsTab';
 import SyncTab from './sync/SyncTab';
+import usePageStatus from './sync/usePageStatus';
 import useSyncFlow from './sync/useSyncFlow';
 import { getQueryArg, setQueryArgs } from './url';
 
@@ -46,6 +47,7 @@ export default function App() {
 	const [ panelKey, setPanelKey ] = useState( 0 );
 	// The flow lives here so it survives switching tabs.
 	const flow = useSyncFlow();
+	usePageStatus( flow );
 
 	const select = ( name ) => {
 		setTab( name );

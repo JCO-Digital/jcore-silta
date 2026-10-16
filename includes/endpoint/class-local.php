@@ -8,6 +8,7 @@
 namespace Jcore\Silta\Endpoint;
 
 use Jcore\Silta\Jobs\Jobs;
+use Jcore\Silta\Settings;
 use Jcore\Silta\Site;
 use Jcore\Silta\Sync\Content;
 use Jcore\Silta\Sync\Context;
@@ -70,6 +71,7 @@ final class Local extends Endpoint {
 			'languages' => Polylang::languages(),
 			'acf'       => Acf::active(),
 			'polylang'  => Polylang::active(),
+			'undo_days' => (int) Settings::get( 'snapshot_days' ),
 		);
 	}
 

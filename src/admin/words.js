@@ -100,6 +100,49 @@ export function actionTone( action ) {
 }
 
 /**
+ * Describes how a source post compares with its copy on the target.
+ *
+ * @param {string} state State from GET /source/posts with status.
+ * @return {string} Label.
+ */
+export function syncStateLabel( state ) {
+	const labels = {
+		not_synced: __( 'Not synced yet', 'jcore-silta' ),
+		synced: __( 'Up to date', 'jcore-silta' ),
+		source_changed: __( 'Changed', 'jcore-silta' ),
+		target_changed: __( 'Edited on the target', 'jcore-silta' ),
+		both_changed: __( 'Changed on both sites', 'jcore-silta' ),
+	};
+	return labels[ state ] || '';
+}
+
+/**
+ * Badge tone for a sync state.
+ *
+ * @param {string} state Sync state.
+ * @return {string} Tone.
+ */
+export function syncStateTone( state ) {
+	return (
+		{
+			synced: 'success',
+			source_changed: 'info',
+			target_changed: 'warning',
+			both_changed: 'warning',
+		}[ state ] || 'neutral'
+	);
+}
+
+/**
+ * Whether a sync state means the source has something the target lacks.
+ *
+ * @param {string} state Sync state.
+ * @return {boolean} Worth syncing.
+ */
+export const isOutdated = ( state ) =>
+	[ 'not_synced', 'source_changed', 'both_changed' ].includes( state );
+
+/**
  * Describes how a target object was matched.
  *
  * @param {string} method Match method.

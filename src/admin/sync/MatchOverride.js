@@ -3,20 +3,26 @@ import {
 	Dropdown,
 	MenuGroup,
 	MenuItem,
+	SearchControl,
+	Spinner,
 	TextControl,
 } from '@wordpress/components';
-import { useState } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
+
+import { errorMessage, get } from '../api';
+import ErrorNotice from '../components/ErrorNotice';
 
 /**
  * Lets the user override which target post an item is written to.
  *
  * @param {Object}                       props         Props.
  * @param {Object}                       props.item    Item.
+ * @param {Object}                       props.flow    Sync flow.
  * @param {(...args: unknown[]) => void} props.onPatch Changes the item.
  * @return {Element} Control.
  */
-export default function MatchOverride( { item, onPatch } ) {
+export default function MatchOverride( { item, flow, onPatch } ) {
 	const [ isAsking, setIsAsking ] = useState( false );
 	const [ targetId, setTargetId ] = useState( '' );
 	const [ isSaving, setIsSaving ] = useState( false );
@@ -78,10 +84,7 @@ export default function MatchOverride( { item, onPatch } ) {
 								setIsAsking( true );
 							} }
 						>
-							{ __(
-								'Use another target post ID…',
-								'jcore-silta'
-							) }
+							{ __( 'Pick another target post…', 'jcore-silta' ) }
 						</MenuItem>
 						{ current !== null && (
 							<MenuItem
@@ -100,6 +103,14 @@ export default function MatchOverride( { item, onPatch } ) {
 				) }
 			/>
 			{ isAsking && (
+				<TargetSearch
+					flow={ flow }
+					postType={ item.subtype }
+					isSaving={ isSaving }
+					onPick={ save }
+				/>
+			) }
+			{ isAsking && (
 				<form
 					className="jcore-silta-override__form"
 					onSubmit={ ( event ) => {
@@ -114,7 +125,10 @@ export default function MatchOverride( { item, onPatch } ) {
 						__nextHasNoMarginBottom
 						type="number"
 						min={ 1 }
-						label={ __( 'Post ID on the target', 'jcore-silta' ) }
+						label={ __(
+							'Or enter its ID on the target',
+							'jcore-silta'
+						) }
 						value={ targetId }
 						onChange={ setTargetId }
 					/>
@@ -136,6 +150,110 @@ export default function MatchOverride( { item, onPatch } ) {
 						{ __( 'Cancel', 'jcore-silta' ) }
 					</Button>
 				</form>
+			) }
+		</div>
+	);
+}
+
+/**
+ * Searches the target for posts of the same type to match with.
+ *
+ * The target is the other site on a push, so searching it needs permission
+ * to read from it; without that only the ID field is offered.
+ *
+ * @param {Object}                       props          Props.
+ * @param {Object}                       props.flow     Sync flow.
+ * @param {string}                       props.postType Post type of the item.
+ * @param {boolean}                      props.isSaving Whether a choice is being saved.
+ * @param {(...args: unknown[]) => void} props.onPick   Called with the chosen post ID.
+ * @return {Element|null} Search.
+ */
+function TargetSearch( { flow, postType, isSaving, onPick } ) {
+	const [ search, setSearch ] = useState( '' );
+	const [ query, setQuery ] = useState( '' );
+	const [ result, setResult ] = useState( null );
+	const [ error, setError ] = useState( '' );
+	const isPush = flow.direction === 'push';
+	const canSearch =
+		! isPush || ( flow.connection?.scopes || [] ).includes( 'read' );
+
+	useEffect( () => {
+		const timer = setTimeout( () => setQuery( search ), 350 );
+		return () => clearTimeout( timer );
+	}, [ search ] );
+
+	useEffect( () => {
+		if ( ! canSearch ) {
+			return;
+		}
+		let alive = true;
+		setError( '' );
+		// The source routes read the other side when the direction is flipped.
+		get( '/source/posts', {
+			connection: flow.connectionId,
+			direction: isPush ? 'pull' : 'push',
+			post_type: postType,
+			search: query,
+			per_page: 10,
+		} )
+			.then( ( response ) => alive && setResult( response ) )
+			.catch( ( e ) => alive && setError( errorMessage( e ) ) );
+		return () => {
+			alive = false;
+		};
+	}, [ canSearch, flow.connectionId, isPush, postType, query ] );
+
+	if ( ! canSearch ) {
+		return null;
+	}
+
+	return (
+		<div className="jcore-silta-override__search">
+			<SearchControl
+				__nextHasNoMarginBottom
+				label={ sprintf(
+					/* translators: %s: target site name. */
+					__( 'Search on %s', 'jcore-silta' ),
+					flow.targetLabel
+				) }
+				value={ search }
+				onChange={ setSearch }
+			/>
+			<ErrorNotice error={ error } />
+			{ ! result && ! error && <Spinner /> }
+			{ result && result.items.length === 0 && (
+				<p className="description">
+					{ __( 'Nothing found.', 'jcore-silta' ) }
+				</p>
+			) }
+			{ result && result.items.length > 0 && (
+				<ul className="jcore-silta-override__results">
+					{ result.items.map( ( post ) => (
+						<li key={ post.id }>
+							<Button
+								variant="tertiary"
+								size="compact"
+								disabled={ isSaving }
+								accessibleWhenDisabled
+								onClick={ () => onPick( post.id ) }
+							>
+								{ sprintf(
+									/* translators: 1: post title, 2: post ID. */
+									__( '%1$s (#%2$d)', 'jcore-silta' ),
+									post.title ||
+										__( '(no title)', 'jcore-silta' ),
+									post.id
+								) }
+							</Button>
+							{ post.status !== 'publish' &&
+								post.status !== 'inherit' && (
+									<span className="description">
+										{ post.status_label || post.status }
+									</span>
+								) }
+						</li>
+					) ) }
+				</ul>
 			) }
 		</div>
 	);

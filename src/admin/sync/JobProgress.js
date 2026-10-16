@@ -20,7 +20,7 @@ import { phaseLabel } from '../words';
  * @param {boolean} isRunning Whether the job is being written.
  * @return {number} Finished items.
  */
-function finished( progress, isRunning ) {
+export function finished( progress, isRunning ) {
 	const counts = progress?.counts || {};
 	if ( isRunning ) {
 		return (
