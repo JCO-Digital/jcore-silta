@@ -99,6 +99,13 @@ final class Context {
 	private array $resolved = array();
 
 	/**
+	 * Remote post IDs in the bundle by post type and slug, built on first use.
+	 *
+	 * @var array<string, array<string, int>>|null
+	 */
+	private ?array $slugs = null;
+
+	/**
 	 * Creates a context.
 	 *
 	 * @param array<string, mixed> $bundle  Bundle from the source.
@@ -148,7 +155,7 @@ final class Context {
 		foreach ( $objects as $index => $record ) {
 			$error = self::record_error( $record );
 			if ( null !== $error ) {
-				$key = is_array( $record ) && is_string( $record['key'] ?? null ) && preg_match( '/^(post|term|menu):[1-9][0-9]*$/', $record['key'] ) ? $record['key'] : 'invalid:record:' . $index;
+				$key = is_array( $record ) && is_string( $record['key'] ?? null ) && preg_match( '/^(post|term|menu|form):[1-9][0-9]*$/', $record['key'] ) ? $record['key'] : 'invalid:record:' . $index;
 				if ( isset( $this->objects[ $key ] ) || isset( $this->errors[ $key ] ) ) {
 					$key = 'invalid:record:' . $index;
 				}
@@ -190,19 +197,20 @@ final class Context {
 	 */
 	public static function record_error( mixed $record, bool $stub = false ): ?string {
 		$error = __( 'Malformed bundle record: invalid field types or object key.', 'jcore-silta' );
-		if ( ! is_array( $record ) || ! is_string( $record['key'] ?? null ) || ! preg_match( '/^(post|term|menu):[1-9][0-9]*$/', $record['key'] ) ) {
+		if ( ! is_array( $record ) || ! is_string( $record['key'] ?? null ) || ! preg_match( '/^(post|term|menu|form):[1-9][0-9]*$/', $record['key'] ) ) {
 			return $error;
 		}
 		if ( $stub && true === ( $record['missing'] ?? false ) ) {
 			return null;
 		}
-		if ( ! in_array( $record['type'] ?? null, array( 'post', 'term', 'menu' ), true ) || ! is_int( $record['id'] ?? null ) || $record['id'] <= 0 || $record['key'] !== Util::key( $record['type'], $record['id'] ) ) {
+		if ( ! in_array( $record['type'] ?? null, array( 'post', 'term', 'menu', 'form' ), true ) || ! is_int( $record['id'] ?? null ) || $record['id'] <= 0 || $record['key'] !== Util::key( $record['type'], $record['id'] ) ) {
 			return $error;
 		}
 		$required = match ( $record['type'] ) {
 			'post' => array( 'post_type' ),
 			'term' => array( 'taxonomy', 'slug', 'name' ),
 			'menu' => array( 'slug', 'name' ),
+			'form' => array( 'name' ),
 		};
 		if ( ! $stub ) {
 			$required[] = 'hash';
@@ -218,7 +226,7 @@ final class Context {
 				return $error;
 			}
 		}
-		foreach ( array( 'meta', 'meta_groups', 'group_labels', 'terms', 'fields', 'file' ) as $key ) {
+		foreach ( array( 'meta', 'meta_groups', 'group_labels', 'terms', 'fields', 'file', 'settings', 'confirmations', 'notifications' ) as $key ) {
 			if ( isset( $record[ $key ] ) && ! is_array( $record[ $key ] ) ) {
 				return $error;
 			}
@@ -248,7 +256,7 @@ final class Context {
 				return $error;
 			}
 			foreach ( $record['refs'] as $ref ) {
-				if ( ! is_string( $ref ) || ! preg_match( '/^(post|term):[1-9][0-9]*$/', $ref ) ) {
+				if ( ! is_string( $ref ) || ! preg_match( '/^(post|term|form):[1-9][0-9]*$/', $ref ) ) {
 					return $error;
 				}
 			}
@@ -288,6 +296,23 @@ final class Context {
 					default => is_string( $value ),
 				};
 				if ( ! $valid ) {
+					return $error;
+				}
+			}
+		}
+		if ( 'form' === $record['type'] && ! $stub ) {
+			if ( ! is_bool( $record['active'] ?? null ) || ! is_array( $record['settings'] ?? null ) || ! is_array( $record['fields'] ?? null ) || ! array_is_list( $record['fields'] ) || ! is_array( $record['confirmations'] ?? null ) || ! is_array( $record['notifications'] ?? null ) ) {
+				return $error;
+			}
+			foreach ( array( 'fields', 'confirmations', 'notifications' ) as $list ) {
+				foreach ( $record[ $list ] as $item ) {
+					if ( ! is_array( $item ) ) {
+						return $error;
+					}
+				}
+			}
+			foreach ( $record['confirmations'] as $confirmation ) {
+				if ( isset( $confirmation['pageId'] ) && ! is_int( $confirmation['pageId'] ) && ! is_string( $confirmation['pageId'] ) ) {
 					return $error;
 				}
 			}
@@ -368,7 +393,7 @@ final class Context {
 	 * @return array{id: int, method: string}|null
 	 */
 	public function match( array $record ): ?array {
-		if ( ( 'post' === $record['type'] && ! Content::syncable_type( $record['post_type'] ) ) || ( 'term' === $record['type'] && ! Content::syncable_taxonomy( $record['taxonomy'] ) ) ) {
+		if ( ( 'post' === $record['type'] && ! Content::syncable_type( $record['post_type'] ) ) || ( 'term' === $record['type'] && ! Content::syncable_taxonomy( $record['taxonomy'] ) ) || ( 'form' === $record['type'] && ! Gravity_Forms::active() ) ) {
 			return null;
 		}
 		$override = $this->options['overrides'][ $record['key'] ] ?? null;
@@ -390,7 +415,7 @@ final class Context {
 	/**
 	 * Resolves a remote ID to a local one.
 	 *
-	 * @param string $kind post, term or user.
+	 * @param string $kind post, term, form or user.
 	 * @param int    $id   Remote ID.
 	 *
 	 * @return int|null
@@ -461,6 +486,33 @@ final class Context {
 	}
 
 	/**
+	 * Finds the remote post a slug in block attributes names, among the posts
+	 * and stubs of the bundle: the source resolved the slug when it exported
+	 * the post, so the post it names travels as a reference.
+	 *
+	 * @param string $post_type Post type.
+	 * @param string $slug      Slug, as stored in the attribute.
+	 *
+	 * @return int|null Remote post ID.
+	 */
+	public function slug( string $post_type, string $slug ): ?int {
+		if ( null === $this->slugs ) {
+			$this->slugs = array();
+			foreach ( array_merge( array_values( $this->stubs ), array_values( $this->objects ) ) as $info ) {
+				if ( 'post' !== ( $info['type'] ?? '' ) || ! empty( $info['missing'] ) ) {
+					continue;
+				}
+				$name = $info['fields']['post_name'] ?? $info['post_name'] ?? '';
+				if ( is_string( $name ) && '' !== $name && is_string( $info['post_type'] ?? null ) ) {
+					$this->slugs[ $info['post_type'] ][ $name ] = (int) $info['id'];
+				}
+			}
+		}
+
+		return $this->slugs[ $post_type ][ sanitize_title( $slug ) ] ?? null;
+	}
+
+	/**
 	 * Returns a stub or object by key, for display.
 	 *
 	 * @param string $key Key.
@@ -494,14 +546,17 @@ final class Context {
 				$key   = Util::key( $kind, $id );
 				if ( null === $local && 'user' !== $kind && $key !== $self ) {
 					$unresolved[ $key ] = true;
-					if ( isset( $pending[ $key ] ) ) {
+					// A form embed without its ID can't render anything, so an
+					// unresolved form keeps the source ID, and is reported.
+					if ( isset( $pending[ $key ] ) || 'form' === $kind ) {
 						return $id;
 					}
 				}
 
 				return $local;
 			},
-			array( $this, 'field' )
+			array( $this, 'field' ),
+			array( $this, 'slug' )
 		);
 
 		$record               = $this->replace( $record, $this->replacer->with( $this->media_pairs( $record ) ) );
@@ -543,7 +598,7 @@ final class Context {
 	 * @return string|null
 	 */
 	public function conflict( array $record, int $local_id, array $local ): ?string {
-		$row = Mapping::get( $this->site, 'post' === $record['type'] ? 'post' : 'term', (int) $record['id'] );
+		$row = Mapping::get( $this->site, Mapping::type_for( (string) $record['type'] ), (int) $record['id'] );
 
 		if ( null !== $row && (int) $row['local_id'] === $local_id && '' !== $row['local_hash'] ) {
 			return $row['local_hash'] !== State::hash( $local ) ? 'modified' : null;
@@ -571,6 +626,9 @@ final class Context {
 			$post = get_post( $id );
 
 			return $post instanceof \WP_Post && $post->post_type === $record['post_type'] && Content::syncable_type( $post->post_type ) && Content::syncable_status( $post->post_type, $post->post_status );
+		}
+		if ( 'form' === $record['type'] ) {
+			return Gravity_Forms::exists( $id );
 		}
 
 		$term = get_term( $id );
@@ -602,12 +660,15 @@ final class Context {
 	/**
 	 * Whether a local object exists.
 	 *
-	 * @param string $kind post or term.
+	 * @param string $kind post, term or form.
 	 * @param int    $id   Local ID.
 	 *
 	 * @return bool
 	 */
 	private function exists( string $kind, int $id ): bool {
+		if ( 'form' === $kind ) {
+			return Gravity_Forms::exists( $id );
+		}
 		if ( 'term' === $kind ) {
 			$term = get_term( $id );
 
@@ -698,8 +759,46 @@ final class Context {
 			}
 		}
 
+		if ( 'form' === $record['type'] ) {
+			$record = self::replace_form( $record, $text );
+		}
+
 		foreach ( (array) ( $record['meta'] ?? array() ) as $key => $values ) {
 			$record['meta'][ $key ] = array_map( $text, (array) $values );
+		}
+
+		return $record;
+	}
+
+	/**
+	 * Applies the replacer to every text of a form: settings, fields (HTML
+	 * content, labels, defaults, choices), confirmations and notifications.
+	 *
+	 * @param array<string, mixed> $record Form.
+	 * @param callable             $text   Replaces one string.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function replace_form( array $record, callable $text ): array {
+		$walk = static function ( mixed $value, int $depth = 0 ) use ( &$walk, $text ): mixed {
+			if ( is_string( $value ) ) {
+				return $text( $value );
+			}
+			if ( ! is_array( $value ) || $depth > 32 ) {
+				return $value;
+			}
+			foreach ( $value as $key => $item ) {
+				$value[ $key ] = $walk( $item, $depth + 1 );
+			}
+
+			return $value;
+		};
+
+		$record['name'] = $text( (string) ( $record['name'] ?? '' ) );
+		foreach ( array( 'settings', 'fields', 'confirmations', 'notifications' ) as $part ) {
+			if ( isset( $record[ $part ] ) && is_array( $record[ $part ] ) ) {
+				$record[ $part ] = $walk( $record[ $part ] );
+			}
 		}
 
 		return $record;

@@ -15,6 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Runs the matching ladder: stored mapping, origin, GUID, file path, slug.
+ * Gravity Forms forms have no GUID or slug: after the mapping and origin they
+ * match by the same ID with the same title (a database clone), then by title.
  */
 final class Matcher {
 
@@ -55,6 +57,7 @@ final class Matcher {
 			'post' => $this->post( $record ),
 			'term' => $this->term( $record ),
 			'menu' => $this->menu( $record ),
+			'form' => $this->form( $record ),
 			default => null,
 		};
 	}
@@ -257,10 +260,84 @@ final class Matcher {
 	}
 
 	/**
+	 * Matches a Gravity Forms form.
+	 *
+	 * Forms live in Gravity Forms' own tables, so there is no GUID: a form that
+	 * has the same ID and the same title is taken to be the same form, which
+	 * is what a database clone leaves behind. Then a form with the same title,
+	 * if exactly one has it (Gravity Forms keeps titles unique).
+	 *
+	 * @param array<string, mixed> $record Form or stub.
+	 *
+	 * @return array{id: int, method: string}|null
+	 */
+	private function form( array $record ): ?array {
+		if ( ! Gravity_Forms::active() ) {
+			return null;
+		}
+		$id    = (int) $record['id'];
+		$title = (string) ( $record['name'] ?? '' );
+
+		$row = Mapping::get( $this->site, 'form', $id );
+		if ( null !== $row && Gravity_Forms::exists( (int) $row['local_id'] ) ) {
+			return array(
+				'id'     => (int) $row['local_id'],
+				'method' => 'mapping',
+			);
+		}
+
+		$origin = $this->origin( (array) ( $record['origins'] ?? array() ), 'form' );
+		if ( null !== $origin && Gravity_Forms::exists( $origin ) && $this->free( 'form', $origin, $id ) ) {
+			return array(
+				'id'     => $origin,
+				'method' => 'origin',
+			);
+		}
+
+		$candidate = self::form_candidate( $id, $title, Gravity_Forms::title( $id ), Gravity_Forms::ids_by_title( $title ) );
+		if ( null !== $candidate && $this->free( 'form', $candidate['id'], $id ) ) {
+			return $candidate;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Picks the local form a remote one matches, without a mapping.
+	 *
+	 * @param int    $id          Remote form ID.
+	 * @param string $title       Remote form title.
+	 * @param string $local_title Title of the local form with the same ID, or ''.
+	 * @param int[]  $by_title    Local forms with the remote title.
+	 *
+	 * @return array{id: int, method: string}|null
+	 */
+	public static function form_candidate( int $id, string $title, string $local_title, array $by_title ): ?array {
+		if ( '' === $title ) {
+			return null;
+		}
+		if ( $local_title === $title ) {
+			return array(
+				'id'     => $id,
+				'method' => 'clone',
+			);
+		}
+		$by_title = array_values( array_unique( array_map( 'intval', $by_title ) ) );
+		if ( 1 === count( $by_title ) ) {
+			return array(
+				'id'     => $by_title[0],
+				'method' => 'title',
+			);
+		}
+
+		return null;
+	}
+
+	/**
 	 * Resolves an object's origins: this site, or a third site mapped here.
 	 *
 	 * @param array<int, array<string, mixed>> $origins Origins from the bundle.
-	 * @param string                           $type    post or term.
+	 * @param string                           $type    post, term or form.
 	 *
 	 * @return int|null Local ID.
 	 */

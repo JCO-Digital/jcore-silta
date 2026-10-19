@@ -155,6 +155,8 @@ export function matchMethodLabel( method ) {
 		guid: __( 'the same ID (GUID)', 'jcore-silta' ),
 		path: __( 'the same file', 'jcore-silta' ),
 		slug: __( 'the same slug', 'jcore-silta' ),
+		clone: __( 'the same ID and title', 'jcore-silta' ),
+		title: __( 'the same title', 'jcore-silta' ),
 		manual: __( 'your choice', 'jcore-silta' ),
 	};
 	return labels[ method ] || method;
@@ -352,6 +354,7 @@ export function subtypeLabel( subtype, typeLabels = {} ) {
 		attachment: __( 'Media', 'jcore-silta' ),
 		wp_block: __( 'Pattern', 'jcore-silta' ),
 		nav_menu: __( 'Menu', 'jcore-silta' ),
+		gf_form: __( 'Form', 'jcore-silta' ),
 		category: __( 'Category', 'jcore-silta' ),
 		post_tag: __( 'Tag', 'jcore-silta' ),
 	};

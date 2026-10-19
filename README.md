@@ -1,6 +1,6 @@
 # JCORE Silta
 
-Silta ("bridge") syncs content between WordPress sites: single posts, whole post types, menus and media, together with their custom fields, terms, Polylang translations and the posts and media they refer to. URLs and custom rules are search-replaced on the way, a diff mode lets you pick section by section what to sync, and every sync can be undone. The main use case is staging → production.
+Silta ("bridge") syncs content between WordPress sites: single posts, whole post types, menus, media and Gravity Forms forms, together with their custom fields, terms, Polylang translations and the posts and media they refer to. URLs and custom rules are search-replaced on the way, a diff mode lets you pick section by section what to sync, and every sync can be undone. The main use case is staging → production.
 
 This file covers the repository and the development workflow. What the plugin does for site owners is in [readme.txt](readme.txt); the design decisions and their reasoning are in [docs/design.md](docs/design.md).
 
@@ -22,6 +22,19 @@ cd dev && docker compose up -d && ./setup.sh
 ```
 
 That gives you two paired sites: *staging* on <http://localhost:8090> and *production* on <http://localhost:8091> (log in as `admin` / `admin`). Production starts as a clone of staging, and the two have drifted apart since, the way real ones do. See [dev/README.md](dev/README.md) for what the seed creates and how to run WP-CLI on each site.
+
+### Gravity Forms in the dev stack (optional)
+
+Gravity Forms is commercial, so the dev stack and the integration tests only get it when you have a license key. It is installed from [Gravity Forms' Composer repository](https://docs.gravityforms.com/install-gravity-plugins-and-add-ons-via-composer/) (`composer.gravity.io`, package `gravity/gravityforms`), which serves Elite and legacy Developer licenses only.
+
+```sh
+cp dev/.env.example dev/.env   # then set GRAVITY_FORMS_LICENSE_KEY (and GRAVITY_FORMS_SITE_URL if you like)
+cd dev && ./reset.sh           # or ./setup.sh on an existing stack
+```
+
+`dev/setup.sh` runs `dev/gravityforms/install.sh`, which hands the key to Composer through `COMPOSER_AUTH` (HTTP basic auth: the key is the user name, `GRAVITY_FORMS_SITE_URL` the password, `http://localhost:8090` by default) for that one command and installs into `dev/gravityforms/plugins/`. `dev/.env`, `auth.json` and everything installed there are git-ignored. Gravity Forms is a separate Composer project under `dev/`: the plugin's own `composer.json` doesn't know about it, so `composer install` and the release build never need the key, and `.distignore` keeps `dev/` out of the zip. Without a key the install script prints a note and the stack runs without Gravity Forms.
+
+In CI, add the license key as the repository secret **`GRAVITY_FORMS_LICENSE_KEY`** (Settings → Secrets and variables → Actions); optionally set the repository variable `GRAVITY_FORMS_SITE_URL`. The integration workflow passes both to `tests/integration/run.sh`. Pull requests from forks get no secrets, so there the Gravity Forms checks print `skip` and the rest of the run goes on.
 
 For UI work on a single site, `pnpm playground` serves [WordPress Playground](https://wordpress.org/playground/) on <http://localhost:8887> from `.wp/blueprint.json`.
 
@@ -61,12 +74,12 @@ Jobs\Runner ── Endpoint\Local                     Rest\Remote_Controller
 
 A job goes through these steps, each run in time-boxed slices so the admin app can drive it request by request and WP-CLI in a loop:
 
-1. **Resolve** the selection (posts, whole post types, menus) into job items.
+1. **Resolve** the selection (posts, whole post types, menus, forms) into job items.
 2. **Export** a batch on the source (`Sync\Exporter`): every object's state (`Sync\State`), the IDs it refers to (`References\Walker`), stubs for referenced objects, the users and ACF fields it mentions.
-3. **Plan** the batch on the target (`Sync\Planner`): match each object to a local one (`Sync\Matcher`: stored mapping → origin → GUID → file path → slug), transform it into local terms (`Sync\Context`: remap IDs, search-replace URLs and rules), compare section by section (`Sync\Differ`), detect conflicts and missing dependencies, check the target can take it (`Sync\Preflight`).
+3. **Plan** the batch on the target (`Sync\Planner`): match each object to a local one (`Sync\Matcher`: stored mapping → origin → GUID → file path → slug; forms: mapping → origin → same ID and title → title), transform it into local terms (`Sync\Context`: remap IDs, search-replace URLs and rules), compare section by section (`Sync\Differ`), detect conflicts and missing dependencies, check the target can take it (`Sync\Preflight`).
 4. Add the first level of **missing dependencies** and plan those; find **orphans** for whole post types.
 5. **Review** (admin app) or straight on (CLI): include/exclude items, confirm conflicts, pick sections in diff mode, override matches.
-6. **Run**: transfer media in chunks (`Sync\Media`), **import** in batches (`Sync\Importer`: terms, media, posts, menus; dependencies first), snapshot everything changed (`Sync\Snapshots`), record mappings (`Sync\Mapping`), re-import items whose references were created later in the job, trash the chosen orphans.
+6. **Run**: transfer media in chunks (`Sync\Media`), **import** in batches (`Sync\Importer`: terms, media, forms, posts, menus; dependencies first), snapshot everything changed (`Sync\Snapshots`), record mappings (`Sync\Mapping`), re-import items whose references were created later in the job, trash the chosen orphans.
 
 Undo restores the snapshots, removes what the job created and untrashes what it trashed.
 
@@ -88,15 +101,17 @@ includes/
   jobs/                        Jobs (tables), Runner (drives a job)
   sync/                        Exporter, State, Planner, Importer, Context, Matcher, Differ,
                                Preflight, Replacer, Mapping, Snapshots, Media, Menus,
-                               Meta_Filter, Meta_Writer, Acf, Polylang, Content
+                               Meta_Filter, Meta_Writer, Acf, Polylang, Gravity_Forms, Content
   references/                  Walker, Blocks, Acf_Values, Meta_Keys, Values
+  integrations/                Maailma (jcore-maailma global content), Gravity_Forms (form block,
+                               shortcodes, confirmation pages)
   rest/                        REST controllers
   admin/                       Tools page, list table actions, editor panel loader, notices
   cli/                         `wp silta` commands
 views/admin/page.php           Mount point for the admin app
 src/admin/                     Admin app (sync, history, connections, settings)
 src/editor/                    Block editor panel
-dev/                           Two-site Docker stack
+dev/                           Two-site Docker stack (dev/gravityforms/: optional Gravity Forms install)
 tests/unit/                    PHPUnit tests for the pure logic
 tests/integration/run.sh       Two-site integration tests
 docs/design.md                 Design decisions
@@ -114,7 +129,7 @@ Everything lives under `jcore-silta/v1`.
 | Route | Methods | Cap | |
 | --- | --- | --- | --- |
 | `/sources` | GET | sync | Connections to pick from |
-| `/source` | GET | sync | Post types, menus and languages of the source side |
+| `/source` | GET | sync | Post types, menus, forms and languages of the source side, and whether the target has Gravity Forms |
 | `/source/posts` | GET | sync | Search the source side's posts |
 | `/jobs` | GET, POST | sync | History; create a job |
 | `/jobs/{id}` | GET, DELETE | sync | Progress; drop a job that never ran |
@@ -146,7 +161,7 @@ Everything lives under `jcore-silta/v1`.
 
 | Table | Holds |
 | --- | --- |
-| `{prefix}jcore_silta_map` | Which local object a remote one was synced to, with hashes of what was received and written (for conflict detection) |
+| `{prefix}jcore_silta_map` | Which local object a remote one was synced to (`post`, `term` or `form`), with hashes of what was received and written (for conflict detection) |
 | `{prefix}jcore_silta_jobs` | Jobs: role (initiator/target), direction, connection, status, options, state, summary |
 | `{prefix}jcore_silta_job_items` | Per object: plan, payload, choices and result (pruned with old jobs) |
 | `{prefix}jcore_silta_snapshots` | State before a job changed something, for undo (pruned after the configured days) |
@@ -159,8 +174,8 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 
 | Hook | Type | |
 | --- | --- | --- |
-| `jcore_silta_meta_references` | filter | Meta keys that hold IDs: `array( '<key or prefix*>' => 'post'\|'term'\|'user' )` |
-| `jcore_silta_block_references` | filter | Block attributes that hold IDs: `array( 'jco/hero' => array( 'imageId' => 'post', 'posts.*' => 'post' ) )` |
+| `jcore_silta_meta_references` | filter | Meta keys that hold IDs: `array( '<key or prefix*>' => 'post'\|'term'\|'user'\|'form' )` (`form`: a Gravity Forms form ID) |
+| `jcore_silta_block_references` | filter | Block attributes that hold IDs: `array( 'jco/hero' => array( 'imageId' => 'post', 'posts.*' => 'post' ) )`. A top-level attribute holding a post's slug maps to `'slug:<post type>'` |
 | `jcore_silta_excluded_meta` | filter | Meta keys never synced (a trailing `*` matches a prefix) |
 | `jcore_silta_post_types` | filter | Post types offered in the picker |
 | `jcore_silta_syncable_post_type` / `_taxonomy` / `_statuses` | filter | Whether a post type, taxonomy or post status may be exported and imported at all |
@@ -171,7 +186,11 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_remote_url` | filter | Rewrite the URL of a request to a remote (the dev stack maps localhost ports to container names) |
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
 
-ACF fields (image, file, gallery, post object, relationship, page link, taxonomy, user, also inside repeaters, flexible content, groups, clones and ACF blocks), core blocks, featured images, parents, terms, Polylang translations, menu items and the Yoast / Rank Math / SEOPress image and primary-term keys are handled without configuration.
+ACF fields (image, file, gallery, post object, relationship, page link, taxonomy, user, the "ACF: Gravity Forms" `forms` field, also inside repeaters, flexible content, groups, clones and ACF blocks), core blocks, featured images, parents, terms, Polylang translations, menu items, the Yoast / Rank Math / SEOPress image and primary-term keys, and Gravity Forms embeds (the `gravityforms/form` block, the `[gravityform]` shortcode in content and plain-text meta, and confirmation pages) are handled without configuration.
+
+[jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) global content is supported by `Integrations\Maailma`: it declares the `jco/global-content` block's `selectedPostId` and `selectedSlug` through `jcore_silta_block_references`, and keeps Maailma from renaming a global content post's slug after its title while Silta writes the post (`Sync\Importer::writing()`).
+
+Gravity Forms embeds are handled by `Integrations\Gravity_Forms`: it declares the `gravityforms/form` block's `formId` through `jcore_silta_block_references`, and remaps the `[gravityform]` shortcode in content and plain-text meta and the pages confirmations redirect to. The forms themselves are a sync kind of their own (`Sync\Gravity_Forms`, through GFAPI).
 
 ## WP-CLI
 
@@ -180,6 +199,7 @@ wp silta keys create-token --label=Staging --scopes=read,write --user=admin   # 
 wp silta connections add <pairing string> --user=admin                          # on the initiator
 wp silta push production --post=12,34 --dry-run
 wp silta push production --post-type=event --trash-orphans --yes
+wp silta push production --form=3                                               # Gravity Forms, on both sites
 wp silta pull production --post=56 --status=draft
 wp silta diff production --post=12
 wp silta jobs
@@ -191,8 +211,8 @@ wp silta key info | export | regenerate
 
 ## Testing
 
-- `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, and request signatures.
-- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, and clone detection. CI runs it in `.github/workflows/integration.yml`.
+- `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, jcore-maailma's block references, Gravity Forms blocks, shortcodes, confirmations, form matching and normalization, and request signatures.
+- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, Gravity Forms (when installed, see above: forms as dependencies, block and shortcode IDs remapped, URLs replaced, update and undo), and clone detection. CI runs it in `.github/workflows/integration.yml`. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
 
 ## Releasing
 

@@ -41,7 +41,14 @@ jobs:
           composer install --no-interaction --prefer-dist
           pnpm build
 
+      # Gravity Forms is commercial: dev/setup.sh installs it from its Composer
+      # repository only when the GRAVITY_FORMS_LICENSE_KEY secret is set (an
+      # Elite or Developer license). Pull requests from forks get no secrets,
+      # so there the Gravity Forms checks are skipped and the rest still runs.
       - name: Run the integration tests
+        env:
+          GRAVITY_FORMS_LICENSE_KEY: ${{ secrets.GRAVITY_FORMS_LICENSE_KEY }}
+          GRAVITY_FORMS_SITE_URL: ${{ vars.GRAVITY_FORMS_SITE_URL }}
         run: tests/integration/run.sh
 
       - name: Debug logs

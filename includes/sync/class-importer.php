@@ -15,7 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Creates and updates posts, attachments, terms and menus from a bundle,
+ * Creates and updates posts, attachments, terms, menus and Gravity Forms
+ * forms from a bundle,
  * snapshotting everything it changes and recording the mappings.
  */
 final class Importer {
@@ -24,6 +25,13 @@ final class Importer {
 	 * Post columns written through wp_insert_post() / wp_update_post().
 	 */
 	private const COLUMNS = array( 'post_title', 'post_name', 'post_excerpt', 'post_status', 'post_parent', 'menu_order', 'comment_status', 'ping_status', 'post_password' );
+
+	/**
+	 * How many post writes are in progress, see writing().
+	 *
+	 * @var int
+	 */
+	private static int $writing = 0;
 
 	/**
 	 * The bundle and its options.
@@ -73,6 +81,7 @@ final class Importer {
 					'post' => $this->post( $record, $options ),
 					'term' => $this->term( $record ),
 					'menu' => $this->menu( $record, $options ),
+					'form' => $this->form( $record, $options ),
 					default => self::failed( __( 'Unknown object type.', 'jcore-silta' ) ),
 				};
 			} catch ( \Throwable $e ) {
@@ -151,7 +160,7 @@ final class Importer {
 		}
 
 		if ( count( $postarr ) > 1 ) {
-			$updated = wp_update_post( wp_slash( $postarr ), true );
+			$updated = self::save( 'wp_update_post', $postarr );
 			if ( is_wp_error( $updated ) ) {
 				return $updated;
 			}
@@ -382,9 +391,36 @@ final class Importer {
 			}
 		}
 
-		$id = wp_insert_post( wp_slash( $postarr ), true );
+		$id = self::save( 'wp_insert_post', $postarr );
 
 		return is_wp_error( $id ) ? $id : (int) $id;
+	}
+
+	/**
+	 * Whether Silta is writing a post right now (importing or undoing), for
+	 * `save_post` callbacks that would otherwise change what was just written.
+	 *
+	 * @return bool
+	 */
+	public static function writing(): bool {
+		return self::$writing > 0;
+	}
+
+	/**
+	 * Inserts or updates a post, flagged as Silta's own write.
+	 *
+	 * @param string               $write   wp_insert_post or wp_update_post.
+	 * @param array<string, mixed> $postarr Post data, unslashed.
+	 *
+	 * @return int|WP_Error
+	 */
+	private static function save( string $write, array $postarr ): int|WP_Error {
+		++self::$writing;
+		try {
+			return 'wp_insert_post' === $write ? wp_insert_post( wp_slash( $postarr ), true ) : wp_update_post( wp_slash( $postarr ), true );
+		} finally {
+			--self::$writing;
+		}
 	}
 
 	/**
@@ -661,6 +697,105 @@ final class Importer {
 			'local_id'   => $written['id'],
 			'unresolved' => $incoming['unresolved'],
 			'warnings'   => $written['warnings'],
+		);
+	}
+
+	/**
+	 * Imports a Gravity Forms form.
+	 *
+	 * @param array<string, mixed> $record  Incoming form.
+	 * @param array<string, mixed> $options Run options.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function form( array $record, array $options ): array {
+		$key    = (string) $record['key'];
+		$errors = Preflight::check( $record );
+		if ( isset( $errors[''] ) ) {
+			return self::failed( $errors[''] );
+		}
+
+		$match    = $this->ctx->match( $record );
+		$local_id = (int) ( $match['id'] ?? 0 );
+		$local    = $local_id > 0 ? Gravity_Forms::state( $local_id ) : null;
+		if ( null === $local ) {
+			$local_id = 0;
+		}
+		$incoming = $this->ctx->transform( $record );
+		$wants    = self::wants( $options['selections'][ $key ] ?? null, $errors );
+
+		if ( null !== $local ) {
+			$changed = array();
+			foreach ( Differ::sections( $incoming, $local ) as $section => $info ) {
+				if ( $info['changed'] && $wants( $section ) ) {
+					$changed[ $section ] = true;
+				}
+			}
+			if ( empty( $changed ) ) {
+				$this->ctx->settle( $key, $local_id );
+				Mapping::set( $this->ctx->site, 'form', (int) $record['id'], $local_id, (string) $record['hash'], State::hash( $local ) );
+
+				return array(
+					'status'     => 'imported',
+					'action'     => 'unchanged',
+					'local_id'   => $local_id,
+					'unresolved' => $incoming['unresolved'],
+				);
+			}
+
+			$conflict = $this->ctx->conflict( $record, $local_id, $local );
+			if ( null !== $conflict && empty( $options['confirmed'][ $key ] ) ) {
+				$this->ctx->settle( $key, $local_id );
+
+				return array(
+					'status'   => 'skipped',
+					'reason'   => 'conflict',
+					'conflict' => $conflict,
+					'local_id' => $local_id,
+				);
+			}
+
+			Snapshots::updated(
+				$this->job,
+				'form',
+				$local_id,
+				array(
+					'state'     => $local,
+					'site'      => $this->ctx->site,
+					'remote_id' => (int) $record['id'],
+					'mapping'   => Mapping::get( $this->ctx->site, 'form', (int) $record['id'] ),
+				)
+			);
+			$wants = static fn( string $section ): bool => isset( $changed[ $section ] );
+		}
+
+		$written = Gravity_Forms::write( $incoming, $local_id, $wants );
+		if ( is_wp_error( $written ) ) {
+			return self::failed( $written->get_error_message() );
+		}
+
+		if ( null === $local ) {
+			Snapshots::created(
+				$this->job,
+				'form',
+				$written['id'],
+				array(
+					'site'      => $this->ctx->site,
+					'remote_id' => (int) $record['id'],
+				)
+			);
+		}
+
+		$this->ctx->settle( $key, $written['id'] );
+		$after = Gravity_Forms::state( $written['id'] );
+		Mapping::set( $this->ctx->site, 'form', (int) $record['id'], $written['id'], (string) $record['hash'], null === $after ? '' : State::hash( $after ) );
+
+		return array(
+			'status'     => 'imported',
+			'action'     => null === $local ? 'created' : 'updated',
+			'local_id'   => $written['id'],
+			'unresolved' => $incoming['unresolved'],
+			'warnings'   => array_merge( array_values( $errors ), $written['warnings'] ),
 		);
 	}
 

@@ -10,15 +10,23 @@ import { subtypeLabel } from '../words';
  * @param {Object}                       props.flow     Sync flow.
  * @param {Array}                        props.types    Post types of the source.
  * @param {Array}                        props.menus    Menus of the source.
+ * @param {Array}                        props.forms    Gravity Forms forms of the source.
  * @param {(...args: unknown[]) => void} props.onChange Called with the new selection.
  * @return {Element} Summary.
  */
-export default function SelectedSummary( { flow, types, menus, onChange } ) {
+export default function SelectedSummary( {
+	flow,
+	types,
+	menus,
+	forms,
+	onChange,
+} ) {
 	const { selection } = flow;
 	const count =
 		selection.posts.length +
 		selection.post_types.length +
-		selection.menus.length;
+		selection.menus.length +
+		selection.forms.length;
 
 	const without = ( key, predicate ) =>
 		onChange( {
@@ -91,13 +99,31 @@ export default function SelectedSummary( { flow, types, menus, onChange } ) {
 						}
 					/>
 				) ) }
+				{ selection.forms.map( ( id ) => (
+					<SelectedRow
+						key={ `form-${ id }` }
+						title={
+							forms.find( ( form ) => form.id === id )?.title ||
+							`#${ id }`
+						}
+						type={ __( 'Form', 'jcore-silta' ) }
+						onRemove={ () =>
+							without( 'forms', ( entry ) => entry === id )
+						}
+					/>
+				) ) }
 			</ul>
 			{ count > 1 && (
 				<Button
 					variant="link"
 					isDestructive
 					onClick={ () =>
-						onChange( { posts: [], post_types: [], menus: [] } )
+						onChange( {
+							posts: [],
+							post_types: [],
+							menus: [],
+							forms: [],
+						} )
 					}
 				>
 					{ __( 'Clear all', 'jcore-silta' ) }

@@ -114,7 +114,7 @@ final class Planner {
 		$plan = array(
 			'key'      => $key,
 			'type'     => $record['type'],
-			'subtype'  => (string) ( $record['post_type'] ?? $record['taxonomy'] ?? 'nav_menu' ),
+			'subtype'  => self::subtype( $record ),
 			'title'    => (string) ( $record['title'] ?? '' ),
 			'match'    => null === $match ? null : self::describe( $record['type'], $match['id'], $match['method'] ),
 			'action'   => 'create',
@@ -182,7 +182,7 @@ final class Planner {
 			$missing[] = array(
 				'key'      => $key,
 				'title'    => (string) ( $info['title'] ?? $key ),
-				'subtype'  => (string) ( $info['post_type'] ?? $info['taxonomy'] ?? '' ),
+				'subtype'  => (string) ( $info['post_type'] ?? $info['taxonomy'] ?? ( 'form' === ( $info['type'] ?? '' ) ? 'gf_form' : '' ) ),
 				'dangling' => null === $info || ! empty( $info['missing'] ),
 			);
 		}
@@ -191,9 +191,21 @@ final class Planner {
 	}
 
 	/**
+	 * Returns the subtype shown for an object: its post type or taxonomy,
+	 * `nav_menu` for menus and `gf_form` for Gravity Forms forms.
+	 *
+	 * @param array<string, mixed> $record Object.
+	 *
+	 * @return string
+	 */
+	public static function subtype( array $record ): string {
+		return (string) ( $record['post_type'] ?? $record['taxonomy'] ?? ( 'form' === ( $record['type'] ?? '' ) ? 'gf_form' : 'nav_menu' ) );
+	}
+
+	/**
 	 * Describes a local object for display.
 	 *
-	 * @param string $type   post, term or menu.
+	 * @param string $type   post, term, menu or form.
 	 * @param int    $id     Local ID.
 	 * @param string $method How it was matched.
 	 *
@@ -211,6 +223,17 @@ final class Planner {
 				'modified' => $post instanceof \WP_Post ? $post->post_modified_gmt : '',
 				'edit'     => (string) get_edit_post_link( $id, 'raw' ),
 				'view'     => $post instanceof \WP_Post && 'attachment' !== $post->post_type ? (string) get_permalink( $post ) : (string) wp_get_attachment_url( $id ),
+			);
+		}
+
+		if ( 'form' === $type ) {
+			$title = Gravity_Forms::title( $id );
+
+			return array(
+				'id'     => $id,
+				'method' => $method,
+				'title'  => '' !== $title ? $title : '#' . $id,
+				'edit'   => admin_url( 'admin.php?page=gf_edit_forms&id=' . $id ),
 			);
 		}
 

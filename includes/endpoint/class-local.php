@@ -13,6 +13,7 @@ use Jcore\Silta\Site;
 use Jcore\Silta\Sync\Content;
 use Jcore\Silta\Sync\Context;
 use Jcore\Silta\Sync\Exporter;
+use Jcore\Silta\Sync\Gravity_Forms;
 use Jcore\Silta\Sync\Importer;
 use Jcore\Silta\Sync\Mapping;
 use Jcore\Silta\Sync\Media;
@@ -65,13 +66,15 @@ final class Local extends Endpoint {
 	 */
 	public function handshake(): array|WP_Error {
 		return array(
-			'site'      => Site::info(),
-			'types'     => Content::types(),
-			'menus'     => Menus::all(),
-			'languages' => Polylang::languages(),
-			'acf'       => Acf::active(),
-			'polylang'  => Polylang::active(),
-			'undo_days' => (int) Settings::get( 'snapshot_days' ),
+			'site'          => Site::info(),
+			'types'         => Content::types(),
+			'menus'         => Menus::all(),
+			'languages'     => Polylang::languages(),
+			'acf'           => Acf::active(),
+			'polylang'      => Polylang::active(),
+			'gravity_forms' => Gravity_Forms::active(),
+			'forms'         => Gravity_Forms::all(),
+			'undo_days'     => (int) Settings::get( 'snapshot_days' ),
 		);
 	}
 

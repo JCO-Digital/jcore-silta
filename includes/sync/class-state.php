@@ -1,6 +1,6 @@
 <?php
 /**
- * Normalised view of a post, term or menu.
+ * Normalised view of a post, term, menu or form.
  *
  * @package Jcore\Silta
  */
@@ -140,9 +140,20 @@ final class State {
 	}
 
 	/**
+	 * Reads a Gravity Forms form.
+	 *
+	 * @param int $id Form ID.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	public static function form( int $id ): ?array {
+		return Gravity_Forms::state( $id );
+	}
+
+	/**
 	 * Reads an object of any type.
 	 *
-	 * @param string $type post, term or menu.
+	 * @param string $type post, term, menu or form.
 	 * @param int    $id   Object ID.
 	 *
 	 * @return array<string, mixed>|null
@@ -152,6 +163,7 @@ final class State {
 			'post' => self::post( $id ),
 			'term' => self::term( $id ),
 			'menu' => self::menu( $id ),
+			'form' => self::form( $id ),
 			default => null,
 		};
 	}

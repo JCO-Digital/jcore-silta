@@ -7,12 +7,14 @@
 
 namespace Jcore\Silta\References;
 
+use Jcore\Silta\Integrations;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Applies a visitor to every object ID a post, term or menu refers to.
+ * Applies a visitor to every object ID a post, term, menu or form refers to.
  *
  * The source runs it with a collecting visitor to find dependencies; the target
  * runs the same code with a remapping visitor. A visitor returns the ID to keep
@@ -26,19 +28,25 @@ final class Walker {
 	 * @param array<string, mixed> $record Object, modified in place.
 	 * @param callable             $visit  Visitor: ( string $kind, int $id ): ?int.
 	 * @param callable             $field  ACF field resolver: ( string $key ): ?array.
+	 * @param callable|null        $slug   Resolver for posts named by slug in block
+	 *                                     attributes: ( string $post_type, string $slug ): ?int.
+	 *                                     Defaults to a lookup on this site.
 	 *
 	 * @return void
 	 */
-	public static function walk( array &$record, callable $visit, callable $field ): void {
+	public static function walk( array &$record, callable $visit, callable $field, ?callable $slug = null ): void {
 		switch ( $record['type'] ?? '' ) {
 			case 'post':
-				self::post( $record, $visit, $field );
+				self::post( $record, $visit, $field, $slug );
 				break;
 			case 'term':
 				self::term( $record, $visit, $field );
 				break;
 			case 'menu':
 				self::menu( $record, $visit );
+				break;
+			case 'form':
+				Integrations\Gravity_Forms::walk_form( $record, $visit );
 				break;
 		}
 	}
@@ -49,10 +57,11 @@ final class Walker {
 	 * @param array<string, mixed> $record Post.
 	 * @param callable             $visit  Visitor.
 	 * @param callable             $field  Field resolver.
+	 * @param callable|null        $slug   Slug resolver.
 	 *
 	 * @return void
 	 */
-	private static function post( array &$record, callable $visit, callable $field ): void {
+	private static function post( array &$record, callable $visit, callable $field, ?callable $slug ): void {
 		foreach ( array(
 			'post_parent' => 'post',
 			'post_author' => 'user',
@@ -69,7 +78,7 @@ final class Walker {
 		}
 
 		if ( isset( $record['content'] ) && is_string( $record['content'] ) ) {
-			$record['content'] = Blocks::walk( $record['content'], $visit, $field );
+			$record['content'] = Integrations\Gravity_Forms::walk_shortcodes( Blocks::walk( $record['content'], $visit, $field, $slug ), $visit );
 		}
 
 		self::meta( $record, $visit, $field );
@@ -147,6 +156,7 @@ final class Walker {
 
 		Acf_Values::walk_meta( $record['meta'], $visit, $field );
 		Meta_Keys::walk( $record['meta'], $visit );
+		Integrations\Gravity_Forms::walk_meta( $record['meta'], $visit );
 	}
 
 	/**

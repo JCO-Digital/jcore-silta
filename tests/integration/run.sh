@@ -161,6 +161,92 @@ check "orphans are not trashed unless asked" "publish" "$(wp production post get
 wp staging silta push "$PROD" --post-type=event --trash-orphans --yes >/dev/null
 check "orphan trashed with --trash-orphans" "trash" "$(wp production post get 28 --field=post_status)"
 
+echo "== Global content (jcore-maailma)"
+if [ "$(wp staging eval 'echo post_type_exists( "jcore-global-content" ) ? "yes" : "no";')" = "yes" ] && [ "$(wp production eval 'echo post_type_exists( "jcore-global-content" ) ? "yes" : "no";')" = "yes" ]; then
+	gc_json=$(wp staging option get silta_dev_maailma --format=json)
+	# gc <name>: staging ID of a seeded global content item (seed/maailma.php)
+	gc() { printf '%s' "$gc_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )[ $argv[1] ] ?? "";' "$1"; }
+
+	# Maailma renames a slug after the title on every update; the second
+	# "Alatunniste" must keep alatunniste-2 through Silta's insert and update.
+	wp staging silta push "$PROD" --post="$(gc footer_b)" --no-dependencies --yes >/dev/null
+	check "global content keeps its slug on the target" "1" "$(wp production post list --post_type=jcore-global-content --name=alatunniste-2 --format=count --lang=)"
+	check "and isn't renamed after its title" "0" "$(wp production post list --post_type=jcore-global-content --name=alatunniste --format=count --lang=)"
+
+	wp staging silta push "$PROD" --post="$(gc page_fi)" --deep --yes >/dev/null
+	page=$(post_id production "$(wp staging post get "$(gc page_fi)" --field=post_name)" page)
+	contact=$(post_id production ota-yhteytta jcore-global-content)
+	hours=$(post_id production aukioloajat jcore-global-content)
+	contact_en=$(post_id production contact-us jcore-global-content)
+	[ -n "$contact" ] && [ -n "$hours" ] && echo "ok   embedded and nested global content created on production" || { echo "FAIL global content missing on production (contact: $contact, hours: $hours)"; failures=$((failures + 1)); }
+	contains "block ID remapped, slug kept" "{\"selectedPostId\":$contact,\"selectedSlug\":\"ota-yhteytta\"}" "$(wp production post get "$page" --field=post_content)"
+	contains "nested block by slug kept" "{\"selectedSlug\":\"aukioloajat\"}" "$(wp production post get "$contact" --field=post_content)"
+	check "translation of the global content linked" "$contact_en" "$(wp production eval "echo pll_get_post( $contact, 'en' );")"
+	contains "embedded global content renders on production" "Avoinna arkisin" "$(wp production eval "echo Jcore\\Maailma\\get_global_content( 'ota-yhteytta' );")"
+
+	# A target slug that differs (taken, or renamed there) is written into the
+	# block. Only checked when the post got another ID on production: a post
+	# that keeps its ID keeps its slug too.
+	if [ "$hours" = "$(gc hours_fi)" ]; then
+		echo "skip slug rewrite: the post kept its ID on production"
+	else
+		wp production eval "global \$wpdb; \$wpdb->update( \$wpdb->posts, array( 'post_name' => 'aukioloajat-tuotanto' ), array( 'ID' => $hours ) ); clean_post_cache( $hours );" >/dev/null
+		wp staging silta push "$PROD" --post="$(gc contact_fi)" --no-dependencies --yes >/dev/null
+		contains "slug rewritten to the target's" "{\"selectedSlug\":\"aukioloajat-tuotanto\"}" "$(wp production post get "$contact" --field=post_content)"
+	fi
+else
+	echo "skip jcore-maailma is not active on both sites"
+fi
+
+echo "== Gravity Forms"
+# Only with Gravity Forms on both sites, which needs a license key (dev/.env
+# locally, the GRAVITY_FORMS_LICENSE_KEY secret in CI). Without it, skip.
+if [ "$(wp staging eval 'echo class_exists( "GFAPI" ) ? "yes" : "no";')" = "yes" ] && [ "$(wp production eval 'echo class_exists( "GFAPI" ) ? "yes" : "no";')" = "yes" ]; then
+	# form_id <site> <title>
+	form_id() {
+		wp "$1" eval "foreach ( GFAPI::get_forms( null ) as \$f ) { if ( '$2' === \$f['title'] ) { echo \$f['id']; break; } }"
+	}
+	gf_seed='$s = get_option( "silta_dev_gf_seed" );'
+	s_contact=$(wp staging eval "$gf_seed echo \$s['forms']['contact'];")
+	s_newsletter=$(wp staging eval "$gf_seed echo \$s['forms']['newsletter'];")
+	s_page=$(wp staging eval "$gf_seed echo \$s['posts']['form_page'];")
+	s_post=$(wp staging eval "$gf_seed echo \$s['posts']['form_post'];")
+	s_contact_page=$(wp staging eval '$s = get_option( "silta_dev_seed" ); echo $s["posts"]["contact_fi"];')
+
+	contains "forms are offered in the handshake" "Yhteydenotto" "$(wp staging eval 'echo wp_json_encode( ( new Jcore\Silta\Endpoint\Local( "x" ) )->handshake()["forms"] );')"
+
+	# The page embeds the contact form with the block; the form comes along as a dependency.
+	wp staging silta push "$PROD" --post="$s_page" --yes >/dev/null
+	p_contact=$(form_id production Yhteydenotto)
+	[ -n "$p_contact" ] && echo "ok   the contact form was created on production (#$p_contact)" || { echo "FAIL the contact form is not on production"; failures=$((failures + 1)); }
+	[ "$p_contact" != "$s_contact" ] && echo "ok   it got its own ID, not staging's $s_contact" || { echo "FAIL the form kept staging's ID $s_contact, which production's own form has"; failures=$((failures + 1)); }
+	check "production's own form is untouched" "Tuotannon palaute" "$(wp production eval "echo GFAPI::get_form( $s_contact )['title'];")"
+	p_page=$(post_id production ota-yhteytta page)
+	contains "block formId remapped" "\"formId\":\"$p_contact\"" "$(wp production post get "$p_page" --field=post_content)"
+	check "fields arrived" "Nimi|Sähköposti|Viesti|Tietosuoja|" "$(wp production eval "foreach ( GFAPI::get_form( $p_contact )['fields'] as \$f ) { echo \$f->label, '|'; }")"
+	contains "URL in an HTML field replaced" "http://$PROD/tietosuoja/" "$(wp production eval "echo GFAPI::get_form( $p_contact )['fields'][3]->content;")"
+	contains "URL in a notification replaced" "http://$PROD" "$(wp production eval "echo wp_json_encode( GFAPI::get_form( $p_contact )['notifications'], JSON_UNESCAPED_SLASHES );")"
+	check "confirmation page remapped" "$(post_id production "$(wp staging post get "$s_contact_page" --field=post_name)" page)" "$(wp production eval "echo current( GFAPI::get_form( $p_contact )['confirmations'] )['pageId'];")"
+
+	# The post embeds the newsletter form with a shortcode.
+	wp staging silta push "$PROD" --post="$s_post" --yes >/dev/null
+	p_newsletter=$(form_id production Uutiskirje)
+	p_post=$(post_id production tilaa-uutiskirje)
+	[ "$p_newsletter" != "$s_newsletter" ] && echo "ok   the newsletter form got its own ID (#$p_newsletter)" || { echo "FAIL the newsletter form kept staging's ID"; failures=$((failures + 1)); }
+	contains "shortcode id remapped" "[gravityform id=\"$p_newsletter\"" "$(wp production post get "$p_post" --field=post_content)"
+
+	# A form on its own: unchanged, then updated, then undone.
+	contains "pushing the form again changes nothing" "unchanged" "$(wp staging silta push "$PROD" --form="$s_contact" --dry-run)"
+	wp staging eval "\$f = GFAPI::get_form( $s_contact ); \$f['button']['text'] = 'Lähetä viesti'; GFAPI::update_form( \$f );" >/dev/null
+	wp staging silta push "$PROD" --form="$s_contact" --yes >/dev/null
+	check "form settings updated" "Lähetä viesti" "$(wp production eval "echo GFAPI::get_form( $p_contact )['button']['text'];")"
+	wp staging silta undo "$(last_job)" --yes >/dev/null
+	check "undo restores the form" "Lähetä" "$(wp production eval "echo GFAPI::get_form( $p_contact )['button']['text'];")"
+	check "entries are never synced" "0" "$(wp production eval "echo GFAPI::count_entries( $p_contact );")"
+else
+	echo "skip Gravity Forms is not active on both sites (set GRAVITY_FORMS_LICENSE_KEY, see dev/.env.example)"
+fi
+
 echo "== Clone detection"
 wp production eval 'update_option( "jcore_silta_site", array( "uuid" => wp_generate_uuid4(), "home" => sha1( "copied-from-elsewhere" ), "seen" => "" ) );' >/dev/null
 wp production option get blogname >/dev/null

@@ -18,9 +18,25 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Reads and writes the map table.
  *
  * Object types are `post` (every post type, attachments and menu items
- * included) and `term` (menus included, as they are nav_menu terms).
+ * included), `term` (menus included, as they are nav_menu terms) and `form`
+ * (Gravity Forms forms).
  */
 final class Mapping {
+
+	/**
+	 * Returns the map table's object type for an object kind.
+	 *
+	 * @param string $kind post, term, menu or form.
+	 *
+	 * @return string post, term or form.
+	 */
+	public static function type_for( string $kind ): string {
+		return match ( $kind ) {
+			'post' => 'post',
+			'form' => 'form',
+			default => 'term',
+		};
+	}
 
 	/**
 	 * Returns the row for a remote object.

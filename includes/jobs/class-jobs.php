@@ -397,7 +397,7 @@ final class Jobs {
 		global $wpdb;
 
 		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
-			$wpdb->prepare( "SELECT object_type, source_id FROM %i WHERE job_id = %d AND object_type IN ('post', 'term', 'menu')", Database::table( 'items' ), $job_id ),
+			$wpdb->prepare( "SELECT object_type, source_id FROM %i WHERE job_id = %d AND object_type IN ('post', 'term', 'menu', 'form')", Database::table( 'items' ), $job_id ),
 			ARRAY_A
 		);
 

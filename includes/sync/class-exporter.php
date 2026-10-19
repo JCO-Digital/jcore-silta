@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Exports posts, terms and menus with everything the target needs to place
+ * Exports posts, terms, menus and forms with everything the target needs to place
  * them: their references, stubs for referenced objects not in the bundle, the
  * users and ACF fields they mention, and how their meta groups into sections.
  */
@@ -78,7 +78,7 @@ final class Exporter {
 			'users'      => $this->users,
 			'acf_fields' => $this->acf,
 			'missing'    => $missing,
-			'errors'     => array_fill_keys( $missing, __( 'The object is missing or its type, taxonomy or status is not eligible for syncing.', 'jcore-silta' ) ),
+			'errors'     => array_map( array( self::class, 'missing_error' ), array_combine( $missing, $missing ) ),
 		);
 	}
 
@@ -96,6 +96,21 @@ final class Exporter {
 		}
 
 		return $description;
+	}
+
+	/**
+	 * Says why an object could not be exported.
+	 *
+	 * @param string $key `type:id` key.
+	 *
+	 * @return string
+	 */
+	private static function missing_error( string $key ): string {
+		if ( str_starts_with( $key, 'form:' ) && ! Gravity_Forms::active() ) {
+			return __( 'Gravity Forms is not active on the source site.', 'jcore-silta' );
+		}
+
+		return __( 'The object is missing or its type, taxonomy or status is not eligible for syncing.', 'jcore-silta' );
 	}
 
 	/**
@@ -134,6 +149,15 @@ final class Exporter {
 			return $stub;
 		}
 
+		if ( 'form' === $type ) {
+			$stub = Gravity_Forms::stub( $id );
+			if ( null !== $stub ) {
+				$stub['origins'] = self::origins( 'form', $id );
+			}
+
+			return $stub;
+		}
+
 		if ( 'term' === $type ) {
 			$term = get_term( $id );
 			if ( ! $term instanceof \WP_Term || ! Content::syncable_taxonomy( $term->taxonomy ) ) {
@@ -160,7 +184,7 @@ final class Exporter {
 	 * Returns where a local object originally came from, so a target that is
 	 * one of those sites can map it straight back.
 	 *
-	 * @param string $type post or term.
+	 * @param string $type post, term or form.
 	 * @param int    $id   Local ID.
 	 *
 	 * @return array<int, array{site: string, id: int}>
@@ -180,7 +204,7 @@ final class Exporter {
 	/**
 	 * Exports one object.
 	 *
-	 * @param string $type post, term or menu.
+	 * @param string $type post, term, menu or form.
 	 * @param int    $id   Object ID.
 	 *
 	 * @return array<string, mixed>|null
@@ -194,7 +218,7 @@ final class Exporter {
 		$state['key']     = Util::key( $type, $id );
 		$state['hash']    = State::hash( $state );
 		$state['title']   = self::title( $state );
-		$state['origins'] = self::origins( 'post' === $type ? 'post' : 'term', $id );
+		$state['origins'] = self::origins( Mapping::type_for( $type ), $id );
 
 		$refs = array();
 		$copy = $state;
@@ -296,7 +320,7 @@ final class Exporter {
 	public static function title( array $state ): string {
 		return match ( $state['type'] ) {
 			'post' => '' !== (string) $state['fields']['post_title'] ? (string) $state['fields']['post_title'] : ( '' !== (string) $state['fields']['post_name'] ? (string) $state['fields']['post_name'] : '#' . $state['id'] ),
-			'term', 'menu' => (string) $state['name'],
+			'term', 'menu', 'form' => (string) $state['name'],
 			default => '',
 		};
 	}

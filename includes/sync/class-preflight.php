@@ -13,7 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Checks that the target has what an incoming object needs: its post type,
- * taxonomies, ACF fields and language.
+ * taxonomies, ACF fields and language, and Gravity Forms with the field
+ * types a form uses.
  */
 final class Preflight {
 
@@ -28,6 +29,7 @@ final class Preflight {
 		return match ( $record['type'] ?? '' ) {
 			'post' => self::post( $record ),
 			'term' => self::term( $record ),
+			'form' => self::form( $record ),
 			default => array(),
 		};
 	}
@@ -100,6 +102,32 @@ final class Preflight {
 					/* translators: %s: taxonomy name. */
 					__( 'Taxonomy "%s" is missing or cannot be synced for this object.', 'jcore-silta' ),
 					(string) $record['taxonomy']
+				),
+			);
+		}
+
+		return array();
+	}
+
+	/**
+	 * Checks a Gravity Forms form.
+	 *
+	 * @param array<string, mixed> $record Form.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function form( array $record ): array {
+		if ( ! Gravity_Forms::active() ) {
+			return array( '' => __( 'Gravity Forms is not active on this site, so forms can’t be synced to it. Activate Gravity Forms here first.', 'jcore-silta' ) );
+		}
+
+		$unknown = Gravity_Forms::unknown_field_types( $record );
+		if ( ! empty( $unknown ) ) {
+			return array(
+				'' => sprintf(
+					/* translators: %s: comma-separated Gravity Forms field types. */
+					__( 'This form uses field types this site doesn’t have: %s. Activate the same Gravity Forms add-ons here first.', 'jcore-silta' ),
+					implode( ', ', $unknown )
 				),
 			);
 		}

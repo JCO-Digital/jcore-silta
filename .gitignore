@@ -14,3 +14,11 @@ Thumbs.db
 .idea/
 .vscode/
 /.phpunit.cache/
+# Local secrets: dev/.env holds the Gravity Forms license key, auth.json
+# Composer credentials. Never commit them.
+.env
+auth.json
+# Gravity Forms for the dev stack, installed by dev/gravityforms/install.sh.
+/dev/gravityforms/composer.lock
+/dev/gravityforms/plugins/
+/dev/gravityforms/vendor/

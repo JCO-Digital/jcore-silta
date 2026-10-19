@@ -12,14 +12,14 @@ Syncs posts, custom fields, terms and media between WordPress sites, with search
 
 == Description ==
 
-JCORE Silta copies content from one WordPress site to another: prepare it on staging and push it to production, or pull production content into a staging or development site. You choose what to sync: single posts, every post of a post type, menus, media, or any mix of them.
+JCORE Silta copies content from one WordPress site to another: prepare it on staging and push it to production, or pull production content into a staging or development site. You choose what to sync: single posts, every post of a post type, menus, media, Gravity Forms forms, or any mix of them.
 
 Silta brings along everything a post needs to work on the other site: its custom fields, categories and other terms, featured image and the images and files it uses, its translations, and the pages or posts it links to. Links and IDs are rewritten so they point at the right content on the other site.
 
 = Features =
 
 * **Push and pull** between connected sites, from **Tools → JCORE Silta**, from the post lists ("Push with Silta") or from a panel in the block editor.
-* **Choose what to sync**: individual posts, whole post types, menus and media.
+* **Choose what to sync**: individual posts, whole post types, menus, media and Gravity Forms forms.
 * **Everything a post needs**: content, custom fields (including ACF repeaters, flexible content and ACF blocks), terms, featured image and media, Polylang languages and translations, SEO data, page hierarchy.
 * **Dependencies**: media, terms and posts the selection refers to are offered along with it when the other site doesn't have them yet.
 * **Search and replace**: the site addresses are replaced automatically, and you can add your own rules per connection.
@@ -48,13 +48,16 @@ To also push from production to staging, or pull in the other direction, pair th
 * Media files with their sizes, alt text, captions and descriptions. The same image is never imported twice.
 * Polylang languages and translation links.
 * Menus with their items and locations, and reusable blocks.
+* Global content from JCORE Maailma. Global content posts sync like any other post type and keep their slugs, which templates use to find them. A page that shows global content with the JCORE Global Content block brings the global content along, and the block keeps pointing at it on the other site.
+* Gravity Forms forms, when Gravity Forms is active on both sites: fields, settings, confirmations, notifications and whether the form is active. Posts that embed a form with the Gravity Forms block, the `[gravityform]` shortcode or an ACF form field get the matching form's ID on the other site, and the forms they embed are offered along with them. A confirmation that redirects to a page points at the matching page.
 
-Comments, users, widgets, site settings and ACF options pages are not synced.
+Comments, users, widgets, site settings and ACF options pages are not synced. Neither are Gravity Forms entries (what visitors submitted) and add-on feeds (payment, CRM and webhook settings, which usually differ between staging and production).
 
 = Safety =
 
 * Before anything is overwritten, Silta saves its current state, so a sync can be undone from **History** for 30 days (configurable).
-* The target site checks that it has the post types, taxonomies, ACF fields and languages the content needs, and refuses the parts it can't take.
+* The target site checks that it has the post types, taxonomies, ACF fields, languages and Gravity Forms field types the content needs, and refuses the parts it can't take.
+* Undoing a sync that created a form moves the form to the Gravity Forms trash instead of deleting it, so entries submitted in the meantime are kept.
 * Existing media files are never overwritten.
 * When a site's database is copied to another address (a staging refresh, a local copy), Silta notices, gives the copy its own identity and switches off the connections that came with it.
 
@@ -91,6 +94,10 @@ Yes, except between sites marked as local or development environments.
 = Where is the key stored? =
 
 Each site that starts syncs has its own key. It is created when the site first connects to another site and stored in the database, encrypted with the site's salts. You can move it into `wp-config.php` (Connections → Move the key to wp-config.php); it then also survives database refreshes. A site that only receives content has no key that could be used to write anywhere.
+
+= How are Gravity Forms forms matched? =
+
+By an earlier sync first. Otherwise a form with the same ID and the same title is taken to be the same form (which is what a database copy leaves behind), then the one form with the same title. Anything else is created as a new form; Gravity Forms numbers its title if another form already has it. Forms can only be synced when Gravity Forms is active on both sites.
 
 = What happens after I refresh staging with a copy of production? =
 

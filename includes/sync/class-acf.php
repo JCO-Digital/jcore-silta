@@ -30,6 +30,8 @@ final class Acf {
 		'page_link'    => 'post',
 		'taxonomy'     => 'term',
 		'user'         => 'user',
+		// The "ACF: Gravity Forms field" add-on stores form IDs.
+		'forms'        => 'form',
 	);
 
 	/**

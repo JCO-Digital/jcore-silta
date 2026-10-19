@@ -45,6 +45,9 @@ final class Sync_Command {
 	 * [--menu=<ids>]
 	 * : Comma-separated menu IDs.
 	 *
+	 * [--form=<ids>]
+	 * : Comma-separated Gravity Forms form IDs. Needs Gravity Forms on both sites.
+	 *
 	 * [--status=<mode>]
 	 * : Status on the target: source (as here), draft, or keep (existing posts keep theirs).
 	 * ---
@@ -80,6 +83,7 @@ final class Sync_Command {
 	 *
 	 *     wp silta push production --post=33,35
 	 *     wp silta push production --post-type=event --dry-run
+	 *     wp silta push production --form=3
 	 *
 	 * @param string[]              $args       Positional arguments.
 	 * @param array<string, string> $assoc_args Options.
@@ -106,6 +110,9 @@ final class Sync_Command {
 	 *
 	 * [--menu=<ids>]
 	 * : Comma-separated menu IDs on the other site.
+	 *
+	 * [--form=<ids>]
+	 * : Comma-separated Gravity Forms form IDs on the other site. Needs Gravity Forms on both sites.
 	 *
 	 * [--status=<mode>]
 	 * : Status here: source (as there), draft, or keep (existing posts keep theirs).
@@ -368,6 +375,7 @@ final class Sync_Command {
 				'posts'      => self::ids( $assoc_args['post'] ?? '' ),
 				'post_types' => array_filter( array_map( 'trim', explode( ',', (string) ( $assoc_args['post-type'] ?? '' ) ) ) ),
 				'menus'      => self::ids( $assoc_args['menu'] ?? '' ),
+				'forms'      => self::ids( $assoc_args['form'] ?? '' ),
 			),
 			array(
 				'status_mode'  => (string) ( $assoc_args['status'] ?? 'source' ),
