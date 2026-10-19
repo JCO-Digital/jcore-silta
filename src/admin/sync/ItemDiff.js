@@ -22,6 +22,10 @@ const groups = () => [
 	[ 'file', __( 'File', 'jcore-silta' ) ],
 	[ 'items', __( 'Menu items', 'jcore-silta' ) ],
 	[ 'locations', __( 'Menu locations', 'jcore-silta' ) ],
+	[ 'settings', __( 'Form settings', 'jcore-silta' ) ],
+	[ 'form_fields', __( 'Form fields', 'jcore-silta' ) ],
+	[ 'confirmations', __( 'Confirmations', 'jcore-silta' ) ],
+	[ 'notifications', __( 'Notifications', 'jcore-silta' ) ],
 ];
 
 /**

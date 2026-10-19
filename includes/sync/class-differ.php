@@ -16,8 +16,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Sections: `fields.<field>`, `content`, `featured_image`, `meta.<group>`
  * (an ACF field with everything stored for it, or a single meta key),
- * `terms.<taxonomy>`, `language`, `file` (attachments) and, for menus,
- * `fields.name`, `items` and `locations`.
+ * `terms.<taxonomy>`, `language`, `file` (attachments); for menus,
+ * `fields.name`, `items` and `locations`; for Gravity Forms forms,
+ * `fields.title`, `fields.active`, `settings`, `form_fields`,
+ * `confirmations` and `notifications`.
  */
 final class Differ {
 
@@ -93,6 +95,7 @@ final class Differ {
 		return match ( $state['type'] ) {
 			'post' => self::post_parts( $state, $incoming ),
 			'menu' => self::menu_parts( $state ),
+			'form' => self::form_parts( $state ),
 			default => array(),
 		};
 	}
@@ -263,6 +266,66 @@ final class Differ {
 				'text'    => false,
 			),
 		);
+	}
+
+	/**
+	 * Splits a Gravity Forms form.
+	 *
+	 * @param array<string, mixed> $state Form state.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	public static function form_parts( array $state ): array {
+		$json = static fn( mixed $value ): string => empty( $value ) ? '' : (string) wp_json_encode( $value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+
+		$fields = array();
+		foreach ( (array) ( $state['fields'] ?? array() ) as $field ) {
+			$fields[] = sprintf( '#%s %s: %s', (string) ( $field['id'] ?? '?' ), (string) ( $field['type'] ?? '' ), (string) ( $field['label'] ?? '' ) ) . "\n" . $json( $field );
+		}
+
+		$parts = array(
+			'fields.title'  => array(
+				'label'   => __( 'Title', 'jcore-silta' ),
+				'group'   => 'fields',
+				'value'   => (string) ( $state['name'] ?? '' ),
+				'display' => (string) ( $state['name'] ?? '' ),
+				'text'    => false,
+			),
+			'fields.active' => array(
+				'label'   => __( 'Active', 'jcore-silta' ),
+				'group'   => 'fields',
+				'value'   => ! empty( $state['active'] ),
+				'display' => ! empty( $state['active'] ) ? __( 'Yes', 'jcore-silta' ) : __( 'No', 'jcore-silta' ),
+				'text'    => false,
+			),
+			'settings'      => array(
+				'label' => __( 'Form settings', 'jcore-silta' ),
+				'value' => (array) ( $state['settings'] ?? array() ),
+			),
+			'form_fields'   => array(
+				'label'   => __( 'Form fields', 'jcore-silta' ),
+				'value'   => array_values( (array) ( $state['fields'] ?? array() ) ),
+				'display' => implode( "\n\n", $fields ),
+			),
+			'confirmations' => array(
+				'label' => __( 'Confirmations', 'jcore-silta' ),
+				'value' => (array) ( $state['confirmations'] ?? array() ),
+			),
+			'notifications' => array(
+				'label' => __( 'Notifications', 'jcore-silta' ),
+				'value' => (array) ( $state['notifications'] ?? array() ),
+			),
+		);
+
+		foreach ( array( 'settings', 'form_fields', 'confirmations', 'notifications' ) as $section ) {
+			$parts[ $section ] += array(
+				'group'   => $section,
+				'display' => $json( $parts[ $section ]['value'] ),
+				'text'    => true,
+			);
+		}
+
+		return $parts;
 	}
 
 	/**

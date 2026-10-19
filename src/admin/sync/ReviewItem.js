@@ -29,10 +29,13 @@ export default function ReviewItem( { item, flow, keys, onPatch } ) {
 	const title = itemTitle( item );
 	const blocked = blockingError( item );
 	const isDiffMode = !! flow.job?.options?.diff;
+	const objectLabels = {
+		menu: __( 'Menu', 'jcore-silta' ),
+		form: __( 'Form', 'jcore-silta' ),
+	};
 	const type =
-		item.object_type === 'menu'
-			? __( 'Menu', 'jcore-silta' )
-			: subtypeLabel( item.subtype, flow.typeLabels );
+		objectLabels[ item.object_type ] ||
+		subtypeLabel( item.subtype, flow.typeLabels );
 
 	return (
 		<li

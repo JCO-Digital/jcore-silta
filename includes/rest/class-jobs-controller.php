@@ -93,6 +93,10 @@ final class Jobs_Controller extends Controller {
 									'type'  => 'array',
 									'items' => array( 'type' => 'integer' ),
 								),
+								'forms'      => array(
+									'type'  => 'array',
+									'items' => array( 'type' => 'integer' ),
+								),
 							),
 						),
 						'options'    => array(
@@ -148,7 +152,7 @@ final class Jobs_Controller extends Controller {
 						'level'    => array( 'type' => 'integer' ),
 						'type'     => array(
 							'type' => 'string',
-							'enum' => array( 'post', 'term', 'menu', 'orphan' ),
+							'enum' => array( 'post', 'term', 'menu', 'form', 'orphan' ),
 						),
 						'page'     => array(
 							'type'    => 'integer',

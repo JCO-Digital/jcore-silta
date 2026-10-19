@@ -10,7 +10,7 @@ import { preselect, site } from '../config';
 import { setQueryArgs } from '../url';
 import { isUsable } from '../words';
 
-const EMPTY_SELECTION = { posts: [], post_types: [], menus: [] };
+const EMPTY_SELECTION = { posts: [], post_types: [], menus: [], forms: [] };
 
 /**
  * The scope a connection needs for a direction.
@@ -131,6 +131,7 @@ export default function useSyncFlow() {
 					} ) ),
 					post_types: chosen.post_types || [],
 					menus: chosen.menus || [],
+					forms: chosen.forms || [],
 				} );
 				setOptions( {
 					...defaultOptions( loadedJob.options?.rules || [] ),
@@ -229,6 +230,7 @@ export default function useSyncFlow() {
 					posts: selection.posts.map( ( item ) => item.id ),
 					post_types: selection.post_types,
 					menus: selection.menus,
+					forms: selection.forms,
 				},
 				options: { ...options, rules: cleanRules( options.rules ) },
 			} );

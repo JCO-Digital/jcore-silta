@@ -7,12 +7,14 @@
 
 namespace Jcore\Silta\References;
 
+use Jcore\Silta\Integrations;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Applies a visitor to every object ID a post, term or menu refers to.
+ * Applies a visitor to every object ID a post, term, menu or form refers to.
  *
  * The source runs it with a collecting visitor to find dependencies; the target
  * runs the same code with a remapping visitor. A visitor returns the ID to keep
@@ -42,6 +44,9 @@ final class Walker {
 				break;
 			case 'menu':
 				self::menu( $record, $visit );
+				break;
+			case 'form':
+				Integrations\Gravity_Forms::walk_form( $record, $visit );
 				break;
 		}
 	}
@@ -73,7 +78,7 @@ final class Walker {
 		}
 
 		if ( isset( $record['content'] ) && is_string( $record['content'] ) ) {
-			$record['content'] = Blocks::walk( $record['content'], $visit, $field, $slug );
+			$record['content'] = Integrations\Gravity_Forms::walk_shortcodes( Blocks::walk( $record['content'], $visit, $field, $slug ), $visit );
 		}
 
 		self::meta( $record, $visit, $field );
@@ -151,6 +156,7 @@ final class Walker {
 
 		Acf_Values::walk_meta( $record['meta'], $visit, $field );
 		Meta_Keys::walk( $record['meta'], $visit );
+		Integrations\Gravity_Forms::walk_meta( $record['meta'], $visit );
 	}
 
 	/**

@@ -5,6 +5,7 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Flex,
+	Notice,
 	ProgressBar,
 	Spinner,
 } from '@wordpress/components';
@@ -121,7 +122,8 @@ export default function StepWhat( { flow } ) {
 	const isEmpty =
 		! selection.posts.length &&
 		! selection.post_types.length &&
-		! selection.menus.length;
+		! selection.menus.length &&
+		! selection.forms.length;
 
 	return (
 		<Card>
@@ -194,6 +196,14 @@ export default function StepWhat( { flow } ) {
 										toggleList( 'menus', id, checked )
 									}
 								/>
+								<FormPicker
+									source={ source }
+									targetLabel={ flow.targetLabel }
+									selected={ selection.forms }
+									onToggle={ ( id, checked ) =>
+										toggleList( 'forms', id, checked )
+									}
+								/>
 							</>
 						) }
 					</div>
@@ -202,6 +212,7 @@ export default function StepWhat( { flow } ) {
 							flow={ flow }
 							types={ source?.types || [] }
 							menus={ source?.menus || [] }
+							forms={ source?.forms || [] }
 							onChange={ setSelection }
 						/>
 					</aside>
@@ -529,6 +540,76 @@ function menuHelp( menu ) {
 		items,
 		menu.locations.join( ', ' )
 	);
+}
+
+/**
+ * Checkboxes for the source's Gravity Forms forms. Shown only when the source
+ * has Gravity Forms; disabled with a note when the target doesn't.
+ *
+ * @param {Object}                       props             Props.
+ * @param {Object}                       props.source      Source handshake.
+ * @param {string}                       props.targetLabel Target site name.
+ * @param {Array}                        props.selected    Selected form IDs.
+ * @param {(...args: unknown[]) => void} props.onToggle    Called with ( id, checked ).
+ * @return {Element|null} Forms.
+ */
+function FormPicker( { source, targetLabel, selected, onToggle } ) {
+	const forms = source.forms || [];
+	if ( ! source.gravity_forms || ! forms.length ) {
+		return null;
+	}
+	const unavailable = source.target_gravity_forms === false;
+	return (
+		<fieldset className="jcore-silta-forms">
+			<legend>
+				<h3>{ __( 'Forms', 'jcore-silta' ) }</h3>
+			</legend>
+			{ unavailable && (
+				<Notice status="warning" isDismissible={ false }>
+					{ sprintf(
+						/* translators: %s: target site name. */
+						__(
+							'Gravity Forms isn’t active on %s, so forms can’t be synced there. Posts that embed a form keep its ID from this site.',
+							'jcore-silta'
+						),
+						targetLabel
+					) }
+				</Notice>
+			) }
+			{ forms.map( ( form ) => (
+				<CheckboxControl
+					__nextHasNoMarginBottom
+					key={ form.id }
+					label={ form.title }
+					help={ formHelp( form ) }
+					checked={ selected.includes( form.id ) }
+					disabled={ unavailable }
+					onChange={ ( checked ) => onToggle( form.id, checked ) }
+				/>
+			) ) }
+		</fieldset>
+	);
+}
+
+/**
+ * Describes a form's size and state.
+ *
+ * @param {Object} form Form.
+ * @return {string} Description.
+ */
+function formHelp( form ) {
+	const fields = sprintf(
+		/* translators: %d: number of form fields. */
+		_n( '%d field', '%d fields', form.fields, 'jcore-silta' ),
+		form.fields
+	);
+	return form.active
+		? fields
+		: sprintf(
+				/* translators: %s: number of fields. */
+				__( '%s, inactive', 'jcore-silta' ),
+				fields
+			);
 }
 
 /**

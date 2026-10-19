@@ -24,7 +24,7 @@ final class Snapshots {
 	 * Records an object's state before a job first changes it.
 	 *
 	 * @param string               $job      Job UUID.
-	 * @param string               $type     post, term or menu.
+	 * @param string               $type     post, term, menu or form.
 	 * @param int                  $local_id Local ID.
 	 * @param array<string, mixed> $data     State and mapping before the change.
 	 *
@@ -38,7 +38,7 @@ final class Snapshots {
 	 * Records that a job created an object.
 	 *
 	 * @param string               $job      Job UUID.
-	 * @param string               $type     post, term or menu.
+	 * @param string               $type     post, term, menu or form.
 	 * @param int                  $local_id Local ID.
 	 * @param array<string, mixed> $data     Mapping details.
 	 *
@@ -64,7 +64,7 @@ final class Snapshots {
 	 * Whether a job already recorded an object.
 	 *
 	 * @param string $job      Job UUID.
-	 * @param string $type     post, term or menu.
+	 * @param string $type     post, term, menu or form.
 	 * @param int    $local_id Local ID.
 	 *
 	 * @return bool
@@ -147,7 +147,7 @@ final class Snapshots {
 					case 'create':
 						self::remove( (string) $row['object_type'], $id );
 						if ( ! empty( $data['site'] ) ) {
-							Mapping::delete( (string) $data['site'], 'post' === $row['object_type'] ? 'post' : 'term', (int) $data['remote_id'] );
+							Mapping::delete( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'] );
 						}
 						++$summary['removed'];
 						break;
@@ -155,7 +155,7 @@ final class Snapshots {
 					case 'update':
 						self::restore( (string) $row['object_type'], $id, $data );
 						if ( ! empty( $data['site'] ) ) {
-							Mapping::restore( (string) $data['site'], 'post' === $row['object_type'] ? 'post' : 'term', (int) $data['remote_id'], $data['mapping'] ?? null );
+							Mapping::restore( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'], $data['mapping'] ?? null );
 						}
 						++$summary['restored'];
 						break;
@@ -231,7 +231,7 @@ final class Snapshots {
 	/**
 	 * Removes an object a job created.
 	 *
-	 * @param string $type     post, term or menu.
+	 * @param string $type     post, term, menu or form.
 	 * @param int    $local_id Local ID.
 	 *
 	 * @return void
@@ -254,6 +254,13 @@ final class Snapshots {
 			return;
 		}
 
+		if ( 'form' === $type ) {
+			Gravity_Forms::remove( $local_id );
+			Mapping::forget_local( 'form', $local_id );
+
+			return;
+		}
+
 		if ( 'menu' === $type ) {
 			wp_delete_nav_menu( $local_id );
 			Mapping::forget_local( 'term', $local_id );
@@ -271,7 +278,7 @@ final class Snapshots {
 	/**
 	 * Puts an object back the way a snapshot recorded it.
 	 *
-	 * @param string               $type     post or menu.
+	 * @param string               $type     post, menu or form.
 	 * @param int                  $local_id Local ID.
 	 * @param array<string, mixed> $data     Snapshot data.
 	 *
@@ -281,6 +288,15 @@ final class Snapshots {
 	private static function restore( string $type, int $local_id, array $data ): void {
 		$state = (array) ( $data['state'] ?? array() );
 		if ( empty( $state ) ) {
+			return;
+		}
+
+		if ( 'form' === $type ) {
+			$warnings = Gravity_Forms::restore( $state );
+			if ( ! empty( $warnings ) ) {
+				throw new \RuntimeException( esc_html( implode( ' ', $warnings ) ) );
+			}
+
 			return;
 		}
 

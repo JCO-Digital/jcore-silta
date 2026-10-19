@@ -54,6 +54,7 @@ final class Plugin {
 		Verifier::register();
 		Cron::register();
 		Integrations\Maailma::register();
+		Integrations\Gravity_Forms::register();
 
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( Site::class, 'check' ), 1 );

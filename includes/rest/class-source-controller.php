@@ -11,6 +11,7 @@ use Jcore\Silta\Endpoint\Endpoint;
 use Jcore\Silta\Endpoint\Local;
 use Jcore\Silta\Endpoint\Remote;
 use Jcore\Silta\Remote\Connections;
+use Jcore\Silta\Sync\Gravity_Forms;
 use Jcore\Silta\Util;
 use WP_Error;
 use WP_REST_Request;
@@ -122,7 +123,8 @@ final class Source_Controller extends Controller {
 	}
 
 	/**
-	 * Handles GET /source: post types, menus and languages of the source.
+	 * Handles GET /source: post types, menus, forms and languages of the source,
+	 * and whether the target has Gravity Forms.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 *
@@ -135,10 +137,34 @@ final class Source_Controller extends Controller {
 		}
 
 		if ( 'push' === $request['direction'] ) {
-			return $this->respond( ( new Local( (string) $connection['site'] ) )->handshake() );
+			$source = ( new Local( (string) $connection['site'] ) )->handshake();
+			if ( ! is_wp_error( $source ) ) {
+				$source['target_gravity_forms'] = self::remote_gravity_forms( (string) $connection['id'] );
+			}
+
+			return $this->respond( $source );
 		}
 
-		return $this->respond( Connections::handshake( (string) $connection['id'], (bool) $request['fresh'] ) );
+		$source = Connections::handshake( (string) $connection['id'], (bool) $request['fresh'] );
+		if ( ! is_wp_error( $source ) ) {
+			$source['target_gravity_forms'] = Gravity_Forms::active();
+		}
+
+		return $this->respond( $source );
+	}
+
+	/**
+	 * Whether a remote has Gravity Forms active, from its (cached) handshake.
+	 * Null when the remote can't be reached.
+	 *
+	 * @param string $id Connection ID.
+	 *
+	 * @return bool|null
+	 */
+	private static function remote_gravity_forms( string $id ): ?bool {
+		$handshake = Connections::handshake( $id );
+
+		return is_wp_error( $handshake ) ? null : ! empty( $handshake['gravity_forms'] );
 	}
 
 	/**

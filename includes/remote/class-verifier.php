@@ -189,7 +189,7 @@ final class Verifier {
 				return new WP_Error( 'jcore_silta_too_many_keys', __( 'The export request contains too many keys. Use a smaller batch.', 'jcore-silta' ), array( 'status' => 413 ) );
 			}
 			foreach ( $keys as $key ) {
-				if ( ! is_string( $key ) || ! preg_match( '/^(post|term|menu):[1-9][0-9]*$/D', $key ) ) {
+				if ( ! is_string( $key ) || ! preg_match( '/^(post|term|menu|form):[1-9][0-9]*$/D', $key ) ) {
 					return new WP_Error( 'jcore_silta_bad_request', __( 'An export key is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
 				}
 			}

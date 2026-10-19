@@ -16,6 +16,8 @@ use Jcore\Silta\Remote\Connections;
 use Jcore\Silta\Settings;
 use Jcore\Silta\Site;
 use Jcore\Silta\Sync\Context;
+use Jcore\Silta\Sync\Gravity_Forms;
+use Jcore\Silta\Sync\Planner;
 use Jcore\Silta\Sync\Snapshots;
 use Jcore\Silta\Util;
 use WP_Error;
@@ -31,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Preparing: resolve the selection into items → export and plan them in
  * batches → add the first level of missing dependencies → find orphans → ready.
- * Running: transfer media → import in batches (terms, media, posts, menus;
+ * Running: transfer media → import in batches (terms, media, forms, posts, menus;
  * dependencies first) → re-import items whose references were created later in
  * the job → trash the chosen orphans → done.
  */
@@ -43,8 +45,9 @@ final class Runner {
 	private const ORDER = array(
 		'term'       => 0,
 		'attachment' => 1,
-		'post'       => 2,
-		'menu'       => 3,
+		'form'       => 2,
+		'post'       => 3,
+		'menu'       => 4,
 	);
 
 	/**
@@ -97,7 +100,7 @@ final class Runner {
 	 *
 	 * @param string               $connection_id Connection ID.
 	 * @param string               $direction     push or pull.
-	 * @param array<string, mixed> $selection     posts, post_types, menus, media.
+	 * @param array<string, mixed> $selection     posts, post_types, menus, forms.
 	 * @param array<string, mixed> $options       status_mode, diff, rules, save_rules, dependencies.
 	 *
 	 * @return array<string, mixed>|WP_Error
@@ -138,8 +141,9 @@ final class Runner {
 			'posts'      => array_values( array_unique( array_map( 'intval', (array) ( $selection['posts'] ?? array() ) ) ) ),
 			'post_types' => array_values( array_unique( array_map( 'sanitize_key', (array) ( $selection['post_types'] ?? array() ) ) ) ),
 			'menus'      => array_values( array_unique( array_map( 'intval', (array) ( $selection['menus'] ?? array() ) ) ) ),
+			'forms'      => array_values( array_filter( array_unique( array_map( 'intval', (array) ( $selection['forms'] ?? array() ) ) ) ) ),
 		);
-		if ( empty( $selection['posts'] ) && empty( $selection['post_types'] ) && empty( $selection['menus'] ) ) {
+		if ( empty( $selection['posts'] ) && empty( $selection['post_types'] ) && empty( $selection['menus'] ) && empty( $selection['forms'] ) ) {
 			return new WP_Error( 'jcore_silta_empty', __( 'Select something to sync.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
@@ -359,7 +363,7 @@ final class Runner {
 					array(
 						'included'    => 1,
 						'status'      => array( 'planned', 'transferred' ),
-						'object_type' => array( 'post', 'term', 'menu' ),
+						'object_type' => array( 'post', 'term', 'menu', 'form' ),
 					),
 					array( 'payload' => true )
 				)
@@ -469,6 +473,8 @@ final class Runner {
 				$allowed = current_user_can( 'create' === $row['action'] ? 'delete_post' : 'edit_post', $id );
 			} elseif ( 'menu' === $row['object_type'] ) {
 				$allowed = current_user_can( 'edit_theme_options' );
+			} elseif ( 'form' === $row['object_type'] ) {
+				$allowed = Gravity_Forms::can_edit();
 			} else {
 				$term     = get_term( $id );
 				$taxonomy = $term instanceof \WP_Term ? get_taxonomy( $term->taxonomy ) : false;
@@ -507,7 +513,7 @@ final class Runner {
 				$job_id,
 				array(
 					'included'    => 1,
-					'object_type' => array( 'post', 'term', 'menu', 'orphan' ),
+					'object_type' => array( 'post', 'term', 'menu', 'form', 'orphan' ),
 				)
 			),
 		);
@@ -613,6 +619,14 @@ final class Runner {
 				'position'    => self::ORDER['menu'] * 100000,
 			);
 		}
+		foreach ( (array) ( $selection['forms'] ?? array() ) as $id ) {
+			$items[] = array(
+				'object_type' => 'form',
+				'source_id'   => (int) $id,
+				'subtype'     => 'gf_form',
+				'position'    => self::ORDER['form'] * 100000,
+			);
+		}
 		foreach ( (array) $selection['post_types'] as $post_type ) {
 			$response = $this->source->ids( array( 'post_type' => $post_type ) );
 			if ( is_wp_error( $response ) ) {
@@ -707,7 +721,8 @@ final class Runner {
 					array(
 						'status'   => 'failed',
 						'included' => false,
-						'result'   => array( 'error' => __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
+						// The source says why when it can, e.g. "Gravity Forms is not active".
+						'result'   => array( 'error' => is_string( $bundle['errors'][ $item['key'] ] ?? null ) ? sanitize_text_field( $bundle['errors'][ $item['key'] ] ) : __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
 					)
 				);
 				continue;
@@ -724,7 +739,7 @@ final class Runner {
 				array(
 					'payload'  => $payload,
 					'title'    => (string) ( $record['title'] ?? '' ),
-					'subtype'  => (string) ( $record['post_type'] ?? $record['taxonomy'] ?? 'nav_menu' ),
+					'subtype'  => Planner::subtype( $record ),
 					'position' => self::position( $record, $level ),
 				)
 			);
@@ -985,7 +1000,7 @@ final class Runner {
 			array(
 				'included'    => 1,
 				'status'      => array( 'planned', 'transferred' ),
-				'object_type' => array( 'post', 'term', 'menu' ),
+				'object_type' => array( 'post', 'term', 'menu', 'form' ),
 			),
 			array(
 				'limit'   => $this->batch_size(),
@@ -1059,7 +1074,7 @@ final class Runner {
 			$job_id,
 			array(
 				'status'      => 'imported',
-				'object_type' => array( 'post', 'term', 'menu' ),
+				'object_type' => array( 'post', 'term', 'menu', 'form' ),
 			)
 		);
 		$done     = array_flip( array_column( $imported, 'key' ) );
@@ -1290,6 +1305,9 @@ final class Runner {
 		if ( 'menu' === $type ) {
 			return current_user_can( 'edit_theme_options' );
 		}
+		if ( 'form' === $type ) {
+			return Gravity_Forms::can_edit();
+		}
 		$term     = 'term' === $type ? get_term( $id ) : null;
 		$taxonomy = $term instanceof \WP_Term ? get_taxonomy( $term->taxonomy ) : null;
 
@@ -1398,6 +1416,9 @@ final class Runner {
 		}
 		if ( 'menu' === ( $record['type'] ?? '' ) ) {
 			return current_user_can( 'edit_theme_options' );
+		}
+		if ( 'form' === ( $record['type'] ?? '' ) ) {
+			return Gravity_Forms::can_edit( null === $target_id );
 		}
 		if ( 'term' === ( $record['type'] ?? '' ) ) {
 			$taxonomy = get_taxonomy( (string) ( $record['taxonomy'] ?? '' ) );
@@ -1773,8 +1794,8 @@ final class Runner {
 	}
 
 	/**
-	 * Computes an item's place in the import order: terms, attachments, posts,
-	 * menus; deeper dependency levels first; parents before children.
+	 * Computes an item's place in the import order: terms, attachments, forms,
+	 * posts, menus; deeper dependency levels first; parents before children.
 	 *
 	 * @param array<string, mixed> $record Exported object.
 	 * @param int                  $level  Dependency level.

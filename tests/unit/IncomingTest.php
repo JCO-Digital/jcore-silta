@@ -229,6 +229,70 @@ final class IncomingTest extends TestCase {
 		$this->assertSame( 'failed', ( new Importer( $ctx, 'job' ) )->run( array() )['invalid:bundle']['status'] );
 	}
 
+	public function test_form_records_and_references(): void {
+		$form = array(
+			'key'           => 'form:3',
+			'type'          => 'form',
+			'id'            => 3,
+			'name'          => 'Contact',
+			'title'         => 'Contact',
+			'hash'          => 'abc',
+			'active'        => true,
+			'settings'      => array( 'labelPlacement' => 'top_label' ),
+			'fields'        => array(
+				array(
+					'id'   => 1,
+					'type' => 'text',
+				),
+			),
+			'confirmations' => array(
+				'c1' => array(
+					'type'   => 'page',
+					'pageId' => '12',
+				),
+			),
+			'notifications' => array(),
+			'refs'          => array( 'post:12' ),
+		);
+		$this->assertNull( Context::record_error( $form ) );
+		foreach ( array(
+			'active'        => '1',
+			'name'          => 3,
+			'settings'      => 'x',
+			'fields'        => array( 'a' => array() ),
+			'confirmations' => array( 'c1' => 'page' ),
+			'notifications' => null,
+			'key'           => 'form:4',
+		) as $key => $value ) {
+			$bad         = $form;
+			$bad[ $key ] = $value;
+			$this->assertNotNull( Context::record_error( $bad ), $key );
+		}
+		$bad                                  = $form;
+		$bad['confirmations']['c1']['pageId'] = array( 12 );
+		$this->assertNotNull( Context::record_error( $bad ) );
+
+		$this->assertNull(
+			Context::record_error(
+				array(
+					'key'   => 'form:3',
+					'type'  => 'form',
+					'id'    => 3,
+					'name'  => 'Contact',
+					'title' => 'Contact',
+				),
+				true
+			)
+		);
+
+		$post         = $this->record();
+		$post['refs'] = array( 'form:3', 'post:2' );
+		$this->assertNull( Context::record_error( $post ) );
+
+		// Gravity Forms is not loaded in the tests, as on a site without it.
+		$this->assertArrayHasKey( '', Preflight::check( $form ) );
+	}
+
 	public function test_kses_follows_the_acting_users_capability(): void {
 		$GLOBALS['jcore_silta_test_kses']       = false;
 		$GLOBALS['jcore_silta_test_unfiltered'] = false;
