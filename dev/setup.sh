@@ -3,8 +3,14 @@
 # seeds staging, clones it into production, makes the two drift apart and
 # pairs them. Each step is skipped once it has run; start over with ./reset.sh.
 #   docker compose up -d && ./setup.sh
+#
+# jcore-maailma is installed from its latest GitHub release. Point
+# SILTA_MAAILMA_ZIP at another zip URL to test another version, or set it to
+# "none" to leave Maailma out.
 set -e
 cd "$(dirname "$0")"
+
+SILTA_MAAILMA_ZIP=${SILTA_MAAILMA_ZIP:-https://github.com/JCO-Digital/jcore-maailma/releases/latest/download/jcore-maailma.zip}
 
 # wp <staging|production> <args...>
 wp() {
@@ -42,6 +48,9 @@ for site in staging production; do
 	wp "$site" core is-installed 2>/dev/null || wp "$site" core install --url="$url" --title="$title" \
 		--admin_user=admin --admin_password=admin --admin_email=admin@example.com --skip-email
 	wp "$site" plugin install secure-custom-fields polylang wordpress-seo --activate
+	if [ "$SILTA_MAAILMA_ZIP" != "none" ] && ! wp "$site" plugin is-active jcore-maailma 2>/dev/null; then
+		wp "$site" plugin install "$SILTA_MAAILMA_ZIP" --force --activate || echo "WARNING: jcore-maailma could not be installed on $site; carrying on without it."
+	fi
 	wp "$site" rewrite structure '/%postname%/'
 	wp "$site" plugin activate jcore-silta || echo "WARNING: jcore-silta did not activate on $site; carrying on without it."
 done
@@ -70,6 +79,9 @@ fi
 echo "== Making staging and production diverge"
 wp staging eval-file /seed/diverge-staging.php --user=admin
 wp production eval-file /seed/diverge-production.php --user=admin
+
+echo "== staging: global content (jcore-maailma)"
+wp staging eval-file /seed/maailma.php --user=admin
 
 echo "== Pairing"
 if wp staging silta --help >/dev/null 2>&1 && wp production silta --help >/dev/null 2>&1; then

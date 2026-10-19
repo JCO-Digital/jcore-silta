@@ -32,10 +32,10 @@ Ports 8080 and 8081 are already taken by another stack on this machine, so the s
 
 ## What `setup.sh` does
 
-1. Installs WordPress (Twenty Twenty-Five, `/%postname%/` permalinks) on both sites. It then installs Secure Custom Fields, Polylang and Yoast SEO from wordpress.org and activates `jcore-silta`. If the plugin fails to activate, setup prints a warning and continues.
+1. Installs WordPress (Twenty Twenty-Five, `/%postname%/` permalinks) on both sites. It then installs Secure Custom Fields, Polylang and Yoast SEO from wordpress.org, [jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) from its latest GitHub release, and activates `jcore-silta`. If a plugin fails to install or activate, setup prints a warning and continues. Set `SILTA_MAAILMA_ZIP` to another release zip URL to test another Maailma version, or to `none` to leave it out.
 2. Runs `seed/seed.php` to seed staging. This happens once, guarded by the `silta_dev_seeded` option.
 3. Clones staging into production, once (guarded by `silta_dev_cloned` on production). The clone dumps the `staging` database into a freshly recreated `production` database, then runs `wp search-replace http://localhost:8090 http://localhost:8091 --skip-columns=guid --all-tables`, then a copy of `wp-content/uploads` between the two volumes. Posts keep their IDs and their staging GUIDs.
-4. Makes the sites diverge with `seed/diverge-staging.php` and `seed/diverge-production.php`, once each.
+4. Makes the sites diverge with `seed/diverge-staging.php` and `seed/diverge-production.php`, once each. Then `seed/maailma.php` adds global content to staging only (see below).
 5. Pairs the sites. Production issues a `read,write` token labelled "Staging" with `wp silta keys create-token`, and staging adds it with `wp silta connections add`. In the other direction, staging issues a `read` token labelled "Production" for production. While the plugin has no `wp silta` command, this step prints a note and skips; once the command exists, run `./setup.sh` again.
 
 ## Seed content
@@ -54,6 +54,8 @@ Ports 8080 and 8081 are already taken by another stack on this machine, so the s
   - One sticky post, one draft, one scheduled post (30 days ahead), and one password-protected post (password `silta`).
   - Featured images on most posts.
 - **Menus:** *Main* (fi) holds a page with a nested child page, a category, a post, a custom link to `/events/` and an external link. *Main EN* is its English counterpart. Both are in the `silta-primary` location, one per language.
+
+**Global content** (jcore-maailma, staging only, created after the clone; IDs in `wp option get silta_dev_maailma --format=json`): *Ota yhteyttä* (fi), which embeds an image and *Aukioloajat* by slug only, with its translation *Contact us* (en); two items titled *Alatunniste*, the second with the slug `alatunniste-2`; and the page *Maailma-esittely*, which shows *Ota yhteyttä* with the JCORE Global Content block.
 
 After the clone, the two sites diverge as follows:
 

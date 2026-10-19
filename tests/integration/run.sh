@@ -161,6 +161,43 @@ check "orphans are not trashed unless asked" "publish" "$(wp production post get
 wp staging silta push "$PROD" --post-type=event --trash-orphans --yes >/dev/null
 check "orphan trashed with --trash-orphans" "trash" "$(wp production post get 28 --field=post_status)"
 
+echo "== Global content (jcore-maailma)"
+if [ "$(wp staging eval 'echo post_type_exists( "jcore-global-content" ) ? "yes" : "no";')" = "yes" ] && [ "$(wp production eval 'echo post_type_exists( "jcore-global-content" ) ? "yes" : "no";')" = "yes" ]; then
+	gc_json=$(wp staging option get silta_dev_maailma --format=json)
+	# gc <name>: staging ID of a seeded global content item (seed/maailma.php)
+	gc() { printf '%s' "$gc_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )[ $argv[1] ] ?? "";' "$1"; }
+
+	# Maailma renames a slug after the title on every update; the second
+	# "Alatunniste" must keep alatunniste-2 through Silta's insert and update.
+	wp staging silta push "$PROD" --post="$(gc footer_b)" --no-dependencies --yes >/dev/null
+	check "global content keeps its slug on the target" "1" "$(wp production post list --post_type=jcore-global-content --name=alatunniste-2 --format=count --lang=)"
+	check "and isn't renamed after its title" "0" "$(wp production post list --post_type=jcore-global-content --name=alatunniste --format=count --lang=)"
+
+	wp staging silta push "$PROD" --post="$(gc page_fi)" --deep --yes >/dev/null
+	page=$(post_id production "$(wp staging post get "$(gc page_fi)" --field=post_name)" page)
+	contact=$(post_id production ota-yhteytta jcore-global-content)
+	hours=$(post_id production aukioloajat jcore-global-content)
+	contact_en=$(post_id production contact-us jcore-global-content)
+	[ -n "$contact" ] && [ -n "$hours" ] && echo "ok   embedded and nested global content created on production" || { echo "FAIL global content missing on production (contact: $contact, hours: $hours)"; failures=$((failures + 1)); }
+	contains "block ID remapped, slug kept" "{\"selectedPostId\":$contact,\"selectedSlug\":\"ota-yhteytta\"}" "$(wp production post get "$page" --field=post_content)"
+	contains "nested block by slug kept" "{\"selectedSlug\":\"aukioloajat\"}" "$(wp production post get "$contact" --field=post_content)"
+	check "translation of the global content linked" "$contact_en" "$(wp production eval "echo pll_get_post( $contact, 'en' );")"
+	contains "embedded global content renders on production" "Avoinna arkisin" "$(wp production eval "echo Jcore\\Maailma\\get_global_content( 'ota-yhteytta' );")"
+
+	# A target slug that differs (taken, or renamed there) is written into the
+	# block. Only checked when the post got another ID on production: a post
+	# that keeps its ID keeps its slug too.
+	if [ "$hours" = "$(gc hours_fi)" ]; then
+		echo "skip slug rewrite: the post kept its ID on production"
+	else
+		wp production eval "global \$wpdb; \$wpdb->update( \$wpdb->posts, array( 'post_name' => 'aukioloajat-tuotanto' ), array( 'ID' => $hours ) ); clean_post_cache( $hours );" >/dev/null
+		wp staging silta push "$PROD" --post="$(gc contact_fi)" --no-dependencies --yes >/dev/null
+		contains "slug rewritten to the target's" "{\"selectedSlug\":\"aukioloajat-tuotanto\"}" "$(wp production post get "$contact" --field=post_content)"
+	fi
+else
+	echo "skip jcore-maailma is not active on both sites"
+fi
+
 echo "== Clone detection"
 wp production eval 'update_option( "jcore_silta_site", array( "uuid" => wp_generate_uuid4(), "home" => sha1( "copied-from-elsewhere" ), "seen" => "" ) );' >/dev/null
 wp production option get blogname >/dev/null
