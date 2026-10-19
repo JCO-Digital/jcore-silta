@@ -99,6 +99,13 @@ final class Context {
 	private array $resolved = array();
 
 	/**
+	 * Remote post IDs in the bundle by post type and slug, built on first use.
+	 *
+	 * @var array<string, array<string, int>>|null
+	 */
+	private ?array $slugs = null;
+
+	/**
 	 * Creates a context.
 	 *
 	 * @param array<string, mixed> $bundle  Bundle from the source.
@@ -461,6 +468,33 @@ final class Context {
 	}
 
 	/**
+	 * Finds the remote post a slug in block attributes names, among the posts
+	 * and stubs of the bundle: the source resolved the slug when it exported
+	 * the post, so the post it names travels as a reference.
+	 *
+	 * @param string $post_type Post type.
+	 * @param string $slug      Slug, as stored in the attribute.
+	 *
+	 * @return int|null Remote post ID.
+	 */
+	public function slug( string $post_type, string $slug ): ?int {
+		if ( null === $this->slugs ) {
+			$this->slugs = array();
+			foreach ( array_merge( array_values( $this->stubs ), array_values( $this->objects ) ) as $info ) {
+				if ( 'post' !== ( $info['type'] ?? '' ) || ! empty( $info['missing'] ) ) {
+					continue;
+				}
+				$name = $info['fields']['post_name'] ?? $info['post_name'] ?? '';
+				if ( is_string( $name ) && '' !== $name && is_string( $info['post_type'] ?? null ) ) {
+					$this->slugs[ $info['post_type'] ][ $name ] = (int) $info['id'];
+				}
+			}
+		}
+
+		return $this->slugs[ $post_type ][ sanitize_title( $slug ) ] ?? null;
+	}
+
+	/**
 	 * Returns a stub or object by key, for display.
 	 *
 	 * @param string $key Key.
@@ -501,7 +535,8 @@ final class Context {
 
 				return $local;
 			},
-			array( $this, 'field' )
+			array( $this, 'field' ),
+			array( $this, 'slug' )
 		);
 
 		$record               = $this->replace( $record, $this->replacer->with( $this->media_pairs( $record ) ) );

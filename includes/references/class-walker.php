@@ -26,13 +26,16 @@ final class Walker {
 	 * @param array<string, mixed> $record Object, modified in place.
 	 * @param callable             $visit  Visitor: ( string $kind, int $id ): ?int.
 	 * @param callable             $field  ACF field resolver: ( string $key ): ?array.
+	 * @param callable|null        $slug   Resolver for posts named by slug in block
+	 *                                     attributes: ( string $post_type, string $slug ): ?int.
+	 *                                     Defaults to a lookup on this site.
 	 *
 	 * @return void
 	 */
-	public static function walk( array &$record, callable $visit, callable $field ): void {
+	public static function walk( array &$record, callable $visit, callable $field, ?callable $slug = null ): void {
 		switch ( $record['type'] ?? '' ) {
 			case 'post':
-				self::post( $record, $visit, $field );
+				self::post( $record, $visit, $field, $slug );
 				break;
 			case 'term':
 				self::term( $record, $visit, $field );
@@ -49,10 +52,11 @@ final class Walker {
 	 * @param array<string, mixed> $record Post.
 	 * @param callable             $visit  Visitor.
 	 * @param callable             $field  Field resolver.
+	 * @param callable|null        $slug   Slug resolver.
 	 *
 	 * @return void
 	 */
-	private static function post( array &$record, callable $visit, callable $field ): void {
+	private static function post( array &$record, callable $visit, callable $field, ?callable $slug ): void {
 		foreach ( array(
 			'post_parent' => 'post',
 			'post_author' => 'user',
@@ -69,7 +73,7 @@ final class Walker {
 		}
 
 		if ( isset( $record['content'] ) && is_string( $record['content'] ) ) {
-			$record['content'] = Blocks::walk( $record['content'], $visit, $field );
+			$record['content'] = Blocks::walk( $record['content'], $visit, $field, $slug );
 		}
 
 		self::meta( $record, $visit, $field );
