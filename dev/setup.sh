@@ -2,6 +2,8 @@
 # Builds the two-site dev stack: installs WordPress on staging and production,
 # seeds staging, clones it into production, makes the two drift apart and
 # pairs them. Each step is skipped once it has run; start over with ./reset.sh.
+# With a Gravity Forms license key in dev/.env (see .env.example), both sites
+# also get Gravity Forms and a few forms.
 #   docker compose up -d && ./setup.sh
 #
 # jcore-maailma is installed from its latest GitHub release. Point
@@ -32,6 +34,11 @@ pair() {
 	wp "$1" option update silta_dev_paired "$2" >/dev/null
 }
 
+# Gravity Forms is optional: without a license key the install script skips it.
+# The directory must exist before Compose mounts it, or Docker creates it as root.
+mkdir -p gravityforms/plugins
+gravityforms/install.sh || echo "WARNING: Gravity Forms could not be installed; carrying on without it."
+
 # Over TCP: the MariaDB entrypoint's temporary init server only listens on a socket.
 until docker compose exec -T db mariadb -h127.0.0.1 -uwordpress -pwordpress -e 'SELECT 1' production >/dev/null 2>&1; do sleep 2; done
 # The WordPress containers copy core into their volumes and write wp-config.php on first start.
@@ -52,6 +59,10 @@ for site in staging production; do
 		wp "$site" plugin install "$SILTA_MAAILMA_ZIP" --force --activate || echo "WARNING: jcore-maailma could not be installed on $site; carrying on without it."
 	fi
 	wp "$site" rewrite structure '/%postname%/'
+	if [ -f gravityforms/plugins/gravityforms/gravityforms.php ]; then
+		docker compose --progress quiet run --rm -T "cli-$site" sh -c 'rm -rf wp-content/plugins/gravityforms && cp -R /gravityforms/gravityforms wp-content/plugins/gravityforms'
+		wp "$site" plugin activate gravityforms || echo "WARNING: Gravity Forms did not activate on $site."
+	fi
 	wp "$site" plugin activate jcore-silta || echo "WARNING: jcore-silta did not activate on $site; carrying on without it."
 done
 
@@ -82,6 +93,12 @@ wp production eval-file /seed/diverge-production.php --user=admin
 
 echo "== staging: global content (jcore-maailma)"
 wp staging eval-file /seed/maailma.php --user=admin
+
+if [ -f gravityforms/plugins/gravityforms/gravityforms.php ]; then
+	echo "== Gravity Forms content"
+	wp staging eval-file /seed/gravityforms.php staging --user=admin
+	wp production eval-file /seed/gravityforms.php production --user=admin
+fi
 
 echo "== Pairing"
 if wp staging silta --help >/dev/null 2>&1 && wp production silta --help >/dev/null 2>&1; then

@@ -1,6 +1,7 @@
 # Local two-site stack for syncing: staging and production WordPress + MariaDB.
 #   docker compose up -d && ./setup.sh
 # Staging: http://localhost:8090, production: http://localhost:8091 (admin / admin).
+# Gravity Forms is added when dev/.env has a license key (see dev/.env.example).
 # WP-CLI: docker compose run --rm cli-staging wp ... (or cli-production).
 name: jcore-silta-dev
 
@@ -14,12 +15,15 @@ x-staging-env: &staging-env
   WORDPRESS_DB_PASSWORD: wordpress
   WORDPRESS_DB_NAME: staging
   WORDPRESS_DEBUG: "1"
+  # Optional, from dev/.env: pre-fills the Gravity Forms license when it is installed.
+  GRAVITY_FORMS_LICENSE_KEY: ${GRAVITY_FORMS_LICENSE_KEY:-}
   WORDPRESS_CONFIG_EXTRA: |
     define( 'WP_HOME', 'http://localhost:8090' );
     define( 'WP_SITEURL', 'http://localhost:8090' );
     define( 'WP_ENVIRONMENT_TYPE', 'local' );
     define( 'WP_DEBUG_LOG', true );
     define( 'WP_DEBUG_DISPLAY', false );
+    if ( getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ) { define( 'GF_LICENSE_KEY', getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ); }
 
 x-production-env: &production-env
   WORDPRESS_DB_HOST: db
@@ -27,12 +31,15 @@ x-production-env: &production-env
   WORDPRESS_DB_PASSWORD: wordpress
   WORDPRESS_DB_NAME: production
   WORDPRESS_DEBUG: "1"
+  # Optional, from dev/.env: pre-fills the Gravity Forms license when it is installed.
+  GRAVITY_FORMS_LICENSE_KEY: ${GRAVITY_FORMS_LICENSE_KEY:-}
   WORDPRESS_CONFIG_EXTRA: |
     define( 'WP_HOME', 'http://localhost:8091' );
     define( 'WP_SITEURL', 'http://localhost:8091' );
     define( 'WP_ENVIRONMENT_TYPE', 'local' );
     define( 'WP_DEBUG_LOG', true );
     define( 'WP_DEBUG_DISPLAY', false );
+    if ( getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ) { define( 'GF_LICENSE_KEY', getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ); }
 
 services:
   db:
@@ -81,6 +88,9 @@ services:
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - ./seed:/seed:ro
+      # Gravity Forms, when dev/gravityforms/install.sh installed it; setup.sh
+      # copies it into the site.
+      - ./gravityforms/plugins:/gravityforms:ro
 
   cli-production:
     image: wordpress:cli-php8.3
@@ -96,6 +106,9 @@ services:
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - ./seed:/seed:ro
+      # Gravity Forms, when dev/gravityforms/install.sh installed it; setup.sh
+      # copies it into the site.
+      - ./gravityforms/plugins:/gravityforms:ro
 
   # Used once by setup.sh to copy staging's uploads into production.
   copy-uploads:

@@ -198,6 +198,55 @@ else
 	echo "skip jcore-maailma is not active on both sites"
 fi
 
+echo "== Gravity Forms"
+# Only with Gravity Forms on both sites, which needs a license key (dev/.env
+# locally, the GRAVITY_FORMS_LICENSE_KEY secret in CI). Without it, skip.
+if [ "$(wp staging eval 'echo class_exists( "GFAPI" ) ? "yes" : "no";')" = "yes" ] && [ "$(wp production eval 'echo class_exists( "GFAPI" ) ? "yes" : "no";')" = "yes" ]; then
+	# form_id <site> <title>
+	form_id() {
+		wp "$1" eval "foreach ( GFAPI::get_forms( null ) as \$f ) { if ( '$2' === \$f['title'] ) { echo \$f['id']; break; } }"
+	}
+	gf_seed='$s = get_option( "silta_dev_gf_seed" );'
+	s_contact=$(wp staging eval "$gf_seed echo \$s['forms']['contact'];")
+	s_newsletter=$(wp staging eval "$gf_seed echo \$s['forms']['newsletter'];")
+	s_page=$(wp staging eval "$gf_seed echo \$s['posts']['form_page'];")
+	s_post=$(wp staging eval "$gf_seed echo \$s['posts']['form_post'];")
+	s_contact_page=$(wp staging eval '$s = get_option( "silta_dev_seed" ); echo $s["posts"]["contact_fi"];')
+
+	contains "forms are offered in the handshake" "Yhteydenotto" "$(wp staging eval 'echo wp_json_encode( ( new Jcore\Silta\Endpoint\Local( "x" ) )->handshake()["forms"] );')"
+
+	# The page embeds the contact form with the block; the form comes along as a dependency.
+	wp staging silta push "$PROD" --post="$s_page" --yes >/dev/null
+	p_contact=$(form_id production Yhteydenotto)
+	[ -n "$p_contact" ] && echo "ok   the contact form was created on production (#$p_contact)" || { echo "FAIL the contact form is not on production"; failures=$((failures + 1)); }
+	[ "$p_contact" != "$s_contact" ] && echo "ok   it got its own ID, not staging's $s_contact" || { echo "FAIL the form kept staging's ID $s_contact, which production's own form has"; failures=$((failures + 1)); }
+	check "production's own form is untouched" "Tuotannon palaute" "$(wp production eval "echo GFAPI::get_form( $s_contact )['title'];")"
+	p_page=$(post_id production ota-yhteytta page)
+	contains "block formId remapped" "\"formId\":\"$p_contact\"" "$(wp production post get "$p_page" --field=post_content)"
+	check "fields arrived" "Nimi|Sähköposti|Viesti|Tietosuoja|" "$(wp production eval "foreach ( GFAPI::get_form( $p_contact )['fields'] as \$f ) { echo \$f->label, '|'; }")"
+	contains "URL in an HTML field replaced" "http://$PROD/tietosuoja/" "$(wp production eval "echo GFAPI::get_form( $p_contact )['fields'][3]->content;")"
+	contains "URL in a notification replaced" "http://$PROD" "$(wp production eval "echo wp_json_encode( GFAPI::get_form( $p_contact )['notifications'], JSON_UNESCAPED_SLASHES );")"
+	check "confirmation page remapped" "$(post_id production "$(wp staging post get "$s_contact_page" --field=post_name)" page)" "$(wp production eval "echo current( GFAPI::get_form( $p_contact )['confirmations'] )['pageId'];")"
+
+	# The post embeds the newsletter form with a shortcode.
+	wp staging silta push "$PROD" --post="$s_post" --yes >/dev/null
+	p_newsletter=$(form_id production Uutiskirje)
+	p_post=$(post_id production tilaa-uutiskirje)
+	[ "$p_newsletter" != "$s_newsletter" ] && echo "ok   the newsletter form got its own ID (#$p_newsletter)" || { echo "FAIL the newsletter form kept staging's ID"; failures=$((failures + 1)); }
+	contains "shortcode id remapped" "[gravityform id=\"$p_newsletter\"" "$(wp production post get "$p_post" --field=post_content)"
+
+	# A form on its own: unchanged, then updated, then undone.
+	contains "pushing the form again changes nothing" "unchanged" "$(wp staging silta push "$PROD" --form="$s_contact" --dry-run)"
+	wp staging eval "\$f = GFAPI::get_form( $s_contact ); \$f['button']['text'] = 'Lähetä viesti'; GFAPI::update_form( \$f );" >/dev/null
+	wp staging silta push "$PROD" --form="$s_contact" --yes >/dev/null
+	check "form settings updated" "Lähetä viesti" "$(wp production eval "echo GFAPI::get_form( $p_contact )['button']['text'];")"
+	wp staging silta undo "$(last_job)" --yes >/dev/null
+	check "undo restores the form" "Lähetä" "$(wp production eval "echo GFAPI::get_form( $p_contact )['button']['text'];")"
+	check "entries are never synced" "0" "$(wp production eval "echo GFAPI::count_entries( $p_contact );")"
+else
+	echo "skip Gravity Forms is not active on both sites (set GRAVITY_FORMS_LICENSE_KEY, see dev/.env.example)"
+fi
+
 echo "== Clone detection"
 wp production eval 'update_option( "jcore_silta_site", array( "uuid" => wp_generate_uuid4(), "home" => sha1( "copied-from-elsewhere" ), "seen" => "" ) );' >/dev/null
 wp production option get blogname >/dev/null

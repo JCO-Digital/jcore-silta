@@ -13,6 +13,8 @@
 	<exclude-pattern>*/build/*</exclude-pattern>
 	<exclude-pattern>*/release/*</exclude-pattern>
 	<exclude-pattern>*/.phpunit.cache/*</exclude-pattern>
+	<!-- Gravity Forms, installed for the dev stack by dev/gravityforms/install.sh. -->
+	<exclude-pattern>*/dev/gravityforms/*</exclude-pattern>
 
 	<config name="testVersion" value="8.2-"/>
 	<config name="minimum_wp_version" value="6.7"/>

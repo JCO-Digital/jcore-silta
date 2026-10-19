@@ -1,0 +1,28 @@
+{
+  "name": "jcodigital/jcore-silta-dev-gravityforms",
+  "description": "Dev stack and integration tests only: installs Gravity Forms from its Composer repository. Never part of the plugin or its release.",
+  "type": "project",
+  "license": "proprietary",
+  "repositories": {
+    "gravity": {
+      "type": "composer",
+      "url": "https://composer.gravity.io",
+      "only": ["gravity/*"]
+    }
+  },
+  "require": {
+    "composer/installers": "^2.0",
+    "gravity/gravityforms": "^2.7 || ^3.0"
+  },
+  "config": {
+    "allow-plugins": {
+      "composer/installers": true
+    },
+    "sort-packages": true
+  },
+  "extra": {
+    "installer-paths": {
+      "plugins/{$name}/": ["type:wordpress-plugin"]
+    }
+  }
+}
