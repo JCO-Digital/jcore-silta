@@ -53,6 +53,7 @@ final class Plugin {
 		Capabilities::register();
 		Verifier::register();
 		Cron::register();
+		Integrations\Maailma::register();
 
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( Site::class, 'check' ), 1 );

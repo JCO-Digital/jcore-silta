@@ -26,6 +26,13 @@ final class Importer {
 	private const COLUMNS = array( 'post_title', 'post_name', 'post_excerpt', 'post_status', 'post_parent', 'menu_order', 'comment_status', 'ping_status', 'post_password' );
 
 	/**
+	 * How many post writes are in progress, see writing().
+	 *
+	 * @var int
+	 */
+	private static int $writing = 0;
+
+	/**
 	 * The bundle and its options.
 	 *
 	 * @var Context
@@ -151,7 +158,7 @@ final class Importer {
 		}
 
 		if ( count( $postarr ) > 1 ) {
-			$updated = wp_update_post( wp_slash( $postarr ), true );
+			$updated = self::save( 'wp_update_post', $postarr );
 			if ( is_wp_error( $updated ) ) {
 				return $updated;
 			}
@@ -382,9 +389,36 @@ final class Importer {
 			}
 		}
 
-		$id = wp_insert_post( wp_slash( $postarr ), true );
+		$id = self::save( 'wp_insert_post', $postarr );
 
 		return is_wp_error( $id ) ? $id : (int) $id;
+	}
+
+	/**
+	 * Whether Silta is writing a post right now (importing or undoing), for
+	 * `save_post` callbacks that would otherwise change what was just written.
+	 *
+	 * @return bool
+	 */
+	public static function writing(): bool {
+		return self::$writing > 0;
+	}
+
+	/**
+	 * Inserts or updates a post, flagged as Silta's own write.
+	 *
+	 * @param string               $write   wp_insert_post or wp_update_post.
+	 * @param array<string, mixed> $postarr Post data, unslashed.
+	 *
+	 * @return int|WP_Error
+	 */
+	private static function save( string $write, array $postarr ): int|WP_Error {
+		++self::$writing;
+		try {
+			return 'wp_insert_post' === $write ? wp_insert_post( wp_slash( $postarr ), true ) : wp_update_post( wp_slash( $postarr ), true );
+		} finally {
+			--self::$writing;
+		}
 	}
 
 	/**

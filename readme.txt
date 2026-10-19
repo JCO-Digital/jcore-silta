@@ -48,6 +48,7 @@ To also push from production to staging, or pull in the other direction, pair th
 * Media files with their sizes, alt text, captions and descriptions. The same image is never imported twice.
 * Polylang languages and translation links.
 * Menus with their items and locations, and reusable blocks.
+* Global content from JCORE Maailma. Global content posts sync like any other post type and keep their slugs, which templates use to find them. A page that shows global content with the JCORE Global Content block brings the global content along, and the block keeps pointing at it on the other site.
 
 Comments, users, widgets, site settings and ACF options pages are not synced.
 

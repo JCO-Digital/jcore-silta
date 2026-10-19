@@ -90,6 +90,7 @@ includes/
                                Preflight, Replacer, Mapping, Snapshots, Media, Menus,
                                Meta_Filter, Meta_Writer, Acf, Polylang, Content
   references/                  Walker, Blocks, Acf_Values, Meta_Keys, Values
+  integrations/                Maailma (jcore-maailma global content)
   rest/                        REST controllers
   admin/                       Tools page, list table actions, editor panel loader, notices
   cli/                         `wp silta` commands
@@ -160,7 +161,7 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | Hook | Type | |
 | --- | --- | --- |
 | `jcore_silta_meta_references` | filter | Meta keys that hold IDs: `array( '<key or prefix*>' => 'post'\|'term'\|'user' )` |
-| `jcore_silta_block_references` | filter | Block attributes that hold IDs: `array( 'jco/hero' => array( 'imageId' => 'post', 'posts.*' => 'post' ) )` |
+| `jcore_silta_block_references` | filter | Block attributes that hold IDs: `array( 'jco/hero' => array( 'imageId' => 'post', 'posts.*' => 'post' ) )`. A top-level attribute holding a post's slug maps to `'slug:<post type>'` |
 | `jcore_silta_excluded_meta` | filter | Meta keys never synced (a trailing `*` matches a prefix) |
 | `jcore_silta_post_types` | filter | Post types offered in the picker |
 | `jcore_silta_syncable_post_type` / `_taxonomy` / `_statuses` | filter | Whether a post type, taxonomy or post status may be exported and imported at all |
@@ -172,6 +173,8 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
 
 ACF fields (image, file, gallery, post object, relationship, page link, taxonomy, user, also inside repeaters, flexible content, groups, clones and ACF blocks), core blocks, featured images, parents, terms, Polylang translations, menu items and the Yoast / Rank Math / SEOPress image and primary-term keys are handled without configuration.
+
+[jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) global content is supported by `Integrations\Maailma`: it declares the `jco/global-content` block's `selectedPostId` and `selectedSlug` through `jcore_silta_block_references`, and keeps Maailma from renaming a global content post's slug after its title while Silta writes the post (`Sync\Importer::writing()`).
 
 ## WP-CLI
 
@@ -191,8 +194,8 @@ wp silta key info | export | regenerate
 
 ## Testing
 
-- `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, and request signatures.
-- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, and clone detection. CI runs it in `.github/workflows/integration.yml`.
+- `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, jcore-maailma's block references, and request signatures.
+- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, and clone detection. CI runs it in `.github/workflows/integration.yml`. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
 
 ## Releasing
 
