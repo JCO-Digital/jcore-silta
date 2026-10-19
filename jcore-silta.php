@@ -3,7 +3,7 @@
  * Plugin Name:       JCORE Silta
  * Plugin URI:        https://github.com/JCO-Digital/jcore-silta
  * Description:       Syncs posts, custom fields, terms and media between WordPress sites, with search-replace and a diff mode for choosing what to sync.
- * Version:           0.3.0
+ * Version:           0.4.0
  * Requires at least: 6.7
  * Tested up to:      7.1
  * Requires PHP:      8.2
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // foonver rewrites this along with the header on every release.
-define( 'JCORE_SILTA_VERSION', '0.3.0' );
+define( 'JCORE_SILTA_VERSION', '0.4.0' );
 define( 'JCORE_SILTA_FILE', __FILE__ );
 define( 'JCORE_SILTA_PATH', plugin_dir_path( __FILE__ ) );
 define( 'JCORE_SILTA_URL', plugin_dir_url( __FILE__ ) );

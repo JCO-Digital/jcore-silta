@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -105,7 +105,16 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.3.0 (2026-10-16) =
+= 0.4.0 (2026-10-19) =
+
+* Feature: sync - sync Gravity Forms forms and remap the form IDs posts embed
+* Feature: sync - keep jcore-maailma global content and its block intact
+* Feature: references - follow post slugs in block attributes
+* Documentation: document Gravity Forms support and its dev stack setup
+* Test: integration - install Gravity Forms in the dev stack and test form syncs
+* Test: dev - add jcore-maailma to the dev stack and integration tests
+
+= v0.3.0 (2026-10-16) =
 
 * Feature: admin - improve sync review and status UX
 
