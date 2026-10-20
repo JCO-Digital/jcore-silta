@@ -444,6 +444,13 @@ final class Jobs_Controller extends Controller {
 		if ( $request->has_param( 'override' ) ) {
 			$override            = $request['override'];
 			$changes['override'] = null === $override || '' === $override ? null : array( 'target' => 'create' === $override ? 'create' : (int) $override );
+
+			// On a push the target post is on the other site, which writes it as its
+			// pairing admin and shows its current content in the diff. Restricted
+			// users get the automatic match or a new copy, never a post they pick.
+			if ( 'push' === $job['direction'] && is_int( $changes['override']['target'] ?? null ) && ! Capabilities::unrestricted() ) {
+				return new WP_Error( 'jcore_silta_forbidden', __( 'Only an administrator can choose which post on the other site a push overwrites.', 'jcore-silta' ), array( 'status' => 403 ) );
+			}
 		}
 		if ( ! empty( $changes ) ) {
 			Jobs::update_item( (int) $item['id'], $changes );
