@@ -113,7 +113,8 @@ jobs:
       release_notes: ${{ needs.release.outputs.release_notes }}
       plugin_file: "jcore-silta.php"
       dist_repo: "git@git.jcore.fi:/srv/git/jcore-silta.git"
-      slack_channel: "#jcore_updates"
+      # #jcore_updates, by ID so a rename does not break it.
+      slack_channel: "CU8LPT03W"
     secrets:
       UPDATE_API_KEY: ${{ secrets.UPDATE_API_KEY }}
       DIST_REPO_SSH_KEY: ${{ secrets.DIST_REPO_SSH_KEY }}
