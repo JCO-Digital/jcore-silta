@@ -12,6 +12,7 @@ import { __, sprintf } from '@wordpress/i18n';
 
 import ErrorNotice from '../components/ErrorNotice';
 import RulesEditor from '../components/RulesEditor';
+import { canManage } from '../config';
 
 /**
  * Step 3: options for the sync.
@@ -118,21 +119,27 @@ export default function StepHow( { flow } ) {
 									'jcore-silta'
 								) }
 					</p>
-					<RulesEditor
-						rules={ options.rules }
-						onChange={ ( rules ) => set( { rules } ) }
-					/>
-					<CheckboxControl
-						__nextHasNoMarginBottom
-						label={ __(
-							'Save these rules for this connection',
-							'jcore-silta'
-						) }
-						checked={ options.save_rules }
-						onChange={ ( saveRules ) =>
-							set( { save_rules: saveRules } )
-						}
-					/>
+					{ canManage ? (
+						<>
+							<RulesEditor
+								rules={ options.rules }
+								onChange={ ( rules ) => set( { rules } ) }
+							/>
+							<CheckboxControl
+								__nextHasNoMarginBottom
+								label={ __(
+									'Save these rules for this connection',
+									'jcore-silta'
+								) }
+								checked={ options.save_rules }
+								onChange={ ( saveRules ) =>
+									set( { save_rules: saveRules } )
+								}
+							/>
+						</>
+					) : (
+						<SavedRules rules={ options.rules } />
+					) }
 				</div>
 
 				<Flex justify="space-between" className="jcore-silta-actions">
@@ -162,5 +169,40 @@ export default function StepHow( { flow } ) {
 				</p>
 			</CardBody>
 		</Card>
+	);
+}
+
+/**
+ * The connection's saved rules, for users who can't change them.
+ *
+ * @param {Object} props       Props.
+ * @param {Array}  props.rules Rules.
+ * @return {Element} Rules.
+ */
+function SavedRules( { rules } ) {
+	return (
+		<>
+			{ rules.length > 0 && (
+				<ul className="jcore-silta-saved-rules">
+					{ rules.map( ( rule, index ) => (
+						<li key={ index }>
+							<code>{ rule[ 0 ] }</code> →{ ' ' }
+							<code>{ rule[ 1 ] }</code>
+						</li>
+					) ) }
+				</ul>
+			) }
+			<p className="description">
+				{ rules.length > 0
+					? __(
+							'These rules are saved on the connection. Ask an administrator to change them.',
+							'jcore-silta'
+						)
+					: __(
+							'No other rules are saved on this connection. Ask an administrator to add them.',
+							'jcore-silta'
+						) }
+			</p>
+		</>
 	);
 }

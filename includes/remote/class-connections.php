@@ -95,7 +95,32 @@ final class Connections {
 			return $ready;
 		}
 
-		$stored_auth = self::stored_auth( $auth );
+		// Pairing again with a site we already know replaces the old pairing. The
+		// pairing string names the site, but whoever wrote the string also
+		// answers the pair request, so a string pointing a known site at another
+		// host is refused: it would redirect the connection, its mappings and its
+		// saved basic auth there.
+		$existing = null;
+		foreach ( self::all() as $connection ) {
+			if ( $connection['site'] === $decoded['site'] ) {
+				$existing = $connection;
+			}
+		}
+		if ( null !== $existing && self::origin( (string) $existing['rest'] ) !== self::origin( $decoded['rest'] ) ) {
+			return new WP_Error(
+				'jcore_silta_moved',
+				sprintf(
+					/* translators: 1: host of the existing connection, 2: host in the pairing string. */
+					__( 'This site is already connected at %1$s, but the pairing string points to %2$s. If the site really moved, remove the old connection first.', 'jcore-silta' ),
+					self::origin( (string) $existing['rest'] ),
+					self::origin( $decoded['rest'] )
+				),
+				array( 'status' => 409 )
+			);
+		}
+
+		// Without new credentials, the saved ones are used for the same host.
+		$stored_auth = self::stored_auth( $auth ) ?? ( $existing['auth'] ?? null );
 
 		$response = Client::pair(
 			$decoded['rest'],
@@ -123,20 +148,15 @@ final class Connections {
 
 		$connections = self::all();
 
-		// Pairing again with a site we already know replaces the old pairing but
-		// keeps the ID, so history and saved rules stay attached.
+		// A new pairing with a known site keeps its ID, so history and saved
+		// rules stay attached.
 		$id    = wp_generate_uuid4();
 		$rules = array();
-		foreach ( $connections as $existing ) {
-			if ( $existing['site'] === $decoded['site'] ) {
-				$id    = $existing['id'];
-				$rules = $existing['rules'] ?? array();
-				if ( '' === $label ) {
-					$label = $existing['label'];
-				}
-				if ( null === $stored_auth ) {
-					$stored_auth = $existing['auth'] ?? null;
-				}
+		if ( null !== $existing ) {
+			$id    = $existing['id'];
+			$rules = $existing['rules'] ?? array();
+			if ( '' === $label ) {
+				$label = $existing['label'];
 			}
 		}
 
@@ -363,6 +383,21 @@ final class Connections {
 		}
 
 		return $clean;
+	}
+
+	/**
+	 * The host and port of a URL, to tell whether two URLs reach the same server.
+	 *
+	 * @param string $url URL.
+	 *
+	 * @return string
+	 */
+	private static function origin( string $url ): string {
+		$parts = wp_parse_url( $url );
+		$host  = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$port  = (int) ( $parts['port'] ?? ( 'http' === ( $parts['scheme'] ?? '' ) ? 80 : 443 ) );
+
+		return in_array( $port, array( 80, 443 ), true ) ? $host : $host . ':' . $port;
 	}
 
 	/**

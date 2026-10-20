@@ -38,10 +38,30 @@ final class Gravity_Forms {
 	private const FIELD_LOCAL = 'formId';
 
 	/**
-	 * Properties whose text is HTML, filtered with kses for users without
-	 * unfiltered_html, like the post content Silta writes.
+	 * Properties whose text may be HTML, wherever they are in a form: settings,
+	 * fields and their sub-fields, choices, inputs, buttons, confirmations and
+	 * notifications. A list under one of these keys (page names) counts too.
+	 * Filtered with kses for users without unfiltered_html, like the post
+	 * content Silta writes, on top of what Gravity Forms filters itself.
 	 */
-	private const HTML_KEYS = array( 'content', 'description', 'label', 'message', 'errorMessage' );
+	private const HTML_KEYS = array(
+		'content',
+		'description',
+		'label',
+		'adminLabel',
+		'customLabel',
+		'checkboxLabel',
+		'defaultValue',
+		'placeholder',
+		'text',
+		'message',
+		'errorMessage',
+		'requireLoginMessage',
+		'limitEntriesMessage',
+		'scheduleMessage',
+		'schedulePendingMessage',
+		'pages',
+	);
 
 	/**
 	 * Whether Gravity Forms is active.
@@ -481,8 +501,11 @@ final class Gravity_Forms {
 	}
 
 	/**
-	 * Filters HTML properties with kses unless the acting user may post
-	 * unfiltered HTML.
+	 * Filters the HTML in an incoming form unless the acting user may post
+	 * unfiltered HTML: Gravity Forms' own sanitizing, which its form editor and
+	 * import run but GFAPI doesn't, then kses on every HTML_KEYS property,
+	 * which also reaches what Gravity Forms leaves out (sub-fields of repeaters,
+	 * confirmation and notification messages, page names).
 	 *
 	 * @param array<string, mixed> $state State.
 	 *
@@ -493,25 +516,75 @@ final class Gravity_Forms {
 			return $state;
 		}
 
-		$clean = static function ( array $item ): array {
-			foreach ( self::HTML_KEYS as $key ) {
-				if ( isset( $item[ $key ] ) && is_string( $item[ $key ] ) ) {
-					$item[ $key ] = wp_kses_post( $item[ $key ] );
-				}
-			}
-
-			return $item;
-		};
-
-		foreach ( array( 'fields', 'confirmations', 'notifications' ) as $list ) {
-			foreach ( (array) ( $state[ $list ] ?? array() ) as $index => $item ) {
-				if ( is_array( $item ) ) {
-					$state[ $list ][ $index ] = $clean( $item );
-				}
-			}
+		$state = self::sanitize_settings( $state );
+		foreach ( array( 'settings', 'fields', 'confirmations', 'notifications' ) as $section ) {
+			$state[ $section ] = self::kses( (array) ( $state[ $section ] ?? array() ) );
 		}
-		$state['settings'] = $clean( (array) ( $state['settings'] ?? array() ) );
 
 		return $state;
+	}
+
+	/**
+	 * Runs a state's title, settings and fields through
+	 * GFFormsModel::sanitize_settings(), which filters them with kses for a
+	 * user without unfiltered_html and casts or allow-lists the rest.
+	 *
+	 * @param array<string, mixed> $state State.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function sanitize_settings( array $state ): array {
+		if ( ! class_exists( 'GFFormsModel' ) || ! method_exists( 'GFFormsModel', 'convert_field_objects' ) || ! method_exists( 'GFFormsModel', 'sanitize_settings' ) ) {
+			return $state;
+		}
+
+		// Field objects, as the form editor and import pass them.
+		$form = \GFFormsModel::convert_field_objects( self::compose( $state, (string) ( $state['name'] ?? '' ) ) + array( 'id' => 0 ) );
+		$form = self::plain( \GFFormsModel::sanitize_settings( $form ) );
+		if ( null === $form ) {
+			return $state;
+		}
+
+		$clean    = self::from_form( 0, $form );
+		$settings = $clean['settings'];
+		// sanitize_settings() stamps this site's Gravity Forms version; the
+		// synced settings keep the source's, as without filtering.
+		unset( $settings['version'] );
+		if ( isset( $state['settings']['version'] ) ) {
+			$settings['version'] = $state['settings']['version'];
+		}
+
+		$state['name']     = $clean['name'];
+		$state['settings'] = self::normalize( $settings );
+		$state['fields']   = $clean['fields'];
+
+		return $state;
+	}
+
+	/**
+	 * Filters the HTML_KEYS properties of a part of a form with kses. Only
+	 * text with a "<" is filtered: without one there is no tag to remove, and
+	 * kses would only re-encode it ("a & b" becomes "a &amp; b").
+	 *
+	 * @param array<mixed> $value Part of a form.
+	 * @param bool         $html  Whether the strings directly in $value are HTML.
+	 * @param int          $depth Nesting depth.
+	 *
+	 * @return array<mixed>
+	 */
+	private static function kses( array $value, bool $html = false, int $depth = 0 ): array {
+		if ( $depth > 32 ) {
+			return array();
+		}
+		foreach ( $value as $key => $item ) {
+			$is_html = in_array( $key, self::HTML_KEYS, true ) || ( $html && is_int( $key ) );
+			if ( is_array( $item ) ) {
+				$value[ $key ] = self::kses( $item, $is_html, $depth + 1 );
+			} elseif ( $is_html && is_string( $item ) && str_contains( $item, '<' ) ) {
+				$value[ $key ] = wp_kses_post( $item );
+			}
+		}
+
+		return $value;
 	}
 }

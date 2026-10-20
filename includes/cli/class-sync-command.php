@@ -7,6 +7,7 @@
 
 namespace Jcore\Silta\Cli;
 
+use Jcore\Silta\Capabilities;
 use Jcore\Silta\Endpoint\Local;
 use Jcore\Silta\Jobs\Jobs;
 use Jcore\Silta\Jobs\Runner;
@@ -59,7 +60,7 @@ final class Sync_Command {
 	 * ---
 	 *
 	 * [--replace=<pair>]
-	 * : Extra search-replace rule as `find=>replace`, on top of the connection's saved rules.
+	 * : Extra search-replace rule as `find=>replace`, on top of the connection's saved rules. Administrators only.
 	 *
 	 * [--[no-]dependencies]
 	 * : Sync along the media, terms and posts the selection refers to (default). --no-dependencies leaves them out.
@@ -361,6 +362,9 @@ final class Sync_Command {
 
 		$rules = (array) ( $connection['rules'] ?? array() );
 		if ( ! empty( $assoc_args['replace'] ) ) {
+			if ( ! Capabilities::unrestricted() ) {
+				WP_CLI::error( 'Only an administrator can add replacement rules.' );
+			}
 			$pair = explode( '=>', (string) $assoc_args['replace'], 2 );
 			if ( 2 !== count( $pair ) ) {
 				WP_CLI::error( '--replace takes find=>replace.' );

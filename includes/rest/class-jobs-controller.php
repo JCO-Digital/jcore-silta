@@ -267,7 +267,9 @@ final class Jobs_Controller extends Controller {
 		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
-		if ( ! in_array( $job['status'], array( 'preparing', 'ready', 'cancelled' ), true ) ) {
+		$never_ran = in_array( $job['status'], array( 'preparing', 'ready' ), true )
+			|| ( 'cancelled' === $job['status'] && in_array( $job['state']['cancelled_from'] ?? '', array( 'preparing', 'ready' ), true ) );
+		if ( ! $never_ran ) {
 			return new WP_Error( 'jcore_silta_keep', __( 'A sync that has written something stays in the history.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
@@ -354,7 +356,10 @@ final class Jobs_Controller extends Controller {
 			return $this->respond( $runner );
 		}
 
-		$runner->cancel();
+		$cancelled = $runner->cancel();
+		if ( is_wp_error( $cancelled ) ) {
+			return $this->respond( $cancelled );
+		}
 
 		return rest_ensure_response( $runner->progress() );
 	}
@@ -444,6 +449,13 @@ final class Jobs_Controller extends Controller {
 		if ( $request->has_param( 'override' ) ) {
 			$override            = $request['override'];
 			$changes['override'] = null === $override || '' === $override ? null : array( 'target' => 'create' === $override ? 'create' : (int) $override );
+
+			// On a push the target post is on the other site, which writes it as its
+			// pairing admin and shows its current content in the diff. Restricted
+			// users get the automatic match or a new copy, never a post they pick.
+			if ( 'push' === $job['direction'] && is_int( $changes['override']['target'] ?? null ) && ! Capabilities::unrestricted() ) {
+				return new WP_Error( 'jcore_silta_forbidden', __( 'Only an administrator can choose which post on the other site a push overwrites.', 'jcore-silta' ), array( 'status' => 403 ) );
+			}
 		}
 		if ( ! empty( $changes ) ) {
 			Jobs::update_item( (int) $item['id'], $changes );

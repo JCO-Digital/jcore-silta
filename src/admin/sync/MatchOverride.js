@@ -12,6 +12,7 @@ import { __, sprintf } from '@wordpress/i18n';
 
 import { errorMessage, get } from '../api';
 import ErrorNotice from '../components/ErrorNotice';
+import { canManage } from '../config';
 
 /**
  * Lets the user override which target post an item is written to.
@@ -27,6 +28,9 @@ export default function MatchOverride( { item, flow, onPatch } ) {
 	const [ targetId, setTargetId ] = useState( '' );
 	const [ isSaving, setIsSaving ] = useState( false );
 	const current = item.override?.target ?? null;
+	// Picking a post on the other site would let a push overwrite, and its
+	// diff show, any post there, so only administrators can do that.
+	const canPick = canManage || flow.direction !== 'push';
 
 	const save = async ( override ) => {
 		setIsSaving( true );
@@ -78,14 +82,19 @@ export default function MatchOverride( { item, flow, onPatch } ) {
 								) }
 							</MenuItem>
 						) }
-						<MenuItem
-							onClick={ () => {
-								onClose();
-								setIsAsking( true );
-							} }
-						>
-							{ __( 'Pick another target post…', 'jcore-silta' ) }
-						</MenuItem>
+						{ canPick && (
+							<MenuItem
+								onClick={ () => {
+									onClose();
+									setIsAsking( true );
+								} }
+							>
+								{ __(
+									'Pick another target post…',
+									'jcore-silta'
+								) }
+							</MenuItem>
+						) }
 						{ current !== null && (
 							<MenuItem
 								onClick={ () => {

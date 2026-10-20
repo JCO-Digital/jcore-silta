@@ -182,4 +182,29 @@ final class ReplacerTest extends TestCase {
 		$replacer = Replacer::between( array(), array(), array( 'bad', array( array(), 'x' ), array( 'old', 'new' ) ) );
 		$this->assertSame( 'new', $replacer->string( 'old' ) );
 	}
+
+	public function test_mapping_passes_every_string_through_the_callback(): void {
+		$upper = Replacer::mapping( 'strtoupper' );
+		$this->assertFalse( $upper->is_empty() );
+		$this->assertSame( 'PLAIN', $upper->string( 'plain' ) );
+
+		$value = serialize(
+			array(
+				'key'  => 'value',
+				'n'    => 1,
+				'deep' => serialize( array( 'inner' ) ),
+			)
+		);
+		$this->assertSame(
+			array(
+				'KEY'  => 'VALUE',
+				'N'    => 1,
+				'DEEP' => serialize( array( 'INNER' ) ),
+			),
+			unserialize( $upper->string( $value ) )
+		);
+
+		$this->expectException( \UnexpectedValueException::class );
+		$upper->string( 'a:1:{i:0;O:8:"stdClass":0:{}}' );
+	}
 }

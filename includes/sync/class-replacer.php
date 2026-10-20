@@ -15,7 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Replaces strings in plain text, JSON and PHP-serialized data.
  *
  * Serialized data is rewritten token by token, recomputing string lengths, and
- * is never unserialized. Object, enum and reference tokens are refused.
+ * is never unserialized. Object, enum and reference tokens are refused. The
+ * same walk can pass every string through a callback instead, see mapping().
  */
 final class Replacer {
 
@@ -25,6 +26,13 @@ final class Replacer {
 	 * @var array<string, string>
 	 */
 	private array $pairs = array();
+
+	/**
+	 * Callback that rewrites each plain string instead of the pairs, see mapping().
+	 *
+	 * @var \Closure|null
+	 */
+	private ?\Closure $map = null;
 
 	/**
 	 * Creates a replacer from [find, replace] pairs. Earlier pairs win on
@@ -78,6 +86,23 @@ final class Replacer {
 		}
 
 		return new self( $pairs );
+	}
+
+	/**
+	 * Builds a replacer that passes every plain string through a callback:
+	 * the whole value, or each string inside serialized data (array keys
+	 * included, nested serialized strings walked in turn), with the lengths
+	 * recomputed. The callback is not carried over by with().
+	 *
+	 * @param callable $callback Callback( string $text ): string.
+	 *
+	 * @return self
+	 */
+	public static function mapping( callable $callback ): self {
+		$replacer      = new self();
+		$replacer->map = \Closure::fromCallable( $callback );
+
+		return $replacer;
 	}
 
 	/**
@@ -156,7 +181,7 @@ final class Replacer {
 	 * @return bool
 	 */
 	public function is_empty(): bool {
-		return empty( $this->pairs );
+		return empty( $this->pairs ) && null === $this->map;
 	}
 
 	/**
@@ -192,7 +217,7 @@ final class Replacer {
 			}
 		}
 
-		return strtr( $value, $this->pairs );
+		return null === $this->map ? strtr( $value, $this->pairs ) : (string) ( $this->map )( $value );
 	}
 
 	/**
