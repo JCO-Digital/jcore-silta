@@ -14,7 +14,9 @@ import ErrorNotice from '../components/ErrorNotice';
 import { phaseLabel } from '../words';
 
 /**
- * Counts the items a phase has finished.
+ * Counts the items a phase has finished. While running, an attachment whose
+ * files were copied counts as finished: copying is most of a run, and its
+ * items are only written after all of them.
  *
  * @param {Object}  progress  Progress: counts and total.
  * @param {boolean} isRunning Whether the job is being written.
@@ -22,14 +24,32 @@ import { phaseLabel } from '../words';
  */
 export function finished( progress, isRunning ) {
 	const counts = progress?.counts || {};
+	const total = progress?.total || 0;
 	if ( isRunning ) {
-		return (
-			( counts.imported || 0 ) +
-			( counts.skipped || 0 ) +
-			( counts.failed || 0 )
+		return Math.min(
+			total,
+			( counts.transferred || 0 ) +
+				( counts.imported || 0 ) +
+				( counts.skipped || 0 ) +
+				( counts.failed || 0 )
 		);
 	}
-	return Math.max( 0, ( progress?.total || 0 ) - ( counts.pending || 0 ) );
+	return Math.max( 0, total - ( counts.pending || 0 ) );
+}
+
+/**
+ * How far the phase is, in percent.
+ *
+ * @param {Object}  progress  Progress: counts and total.
+ * @param {boolean} isRunning Whether the job is being written.
+ * @return {number|undefined} Percent, or undefined without a total.
+ */
+export function percent( progress, isRunning ) {
+	const total = progress?.total || 0;
+	if ( ! total ) {
+		return undefined;
+	}
+	return Math.round( ( finished( progress, isRunning ) / total ) * 100 );
 }
 
 /**
@@ -44,7 +64,7 @@ function countText( isRunning, done, total ) {
 	if ( isRunning ) {
 		return sprintf(
 			/* translators: 1: finished items, 2: all items. */
-			__( '%1$d of %2$d written', 'jcore-silta' ),
+			__( '%1$d of %2$d done', 'jcore-silta' ),
 			done,
 			total
 		);
@@ -70,7 +90,7 @@ export default function JobProgress( { flow } ) {
 	const isRunning = step === 'running';
 	const total = progress?.total || 0;
 	const done = Math.min( total, finished( progress, isRunning ) );
-	const value = total > 0 ? Math.round( ( done / total ) * 100 ) : undefined;
+	const value = percent( progress, isRunning );
 
 	return (
 		<Card>

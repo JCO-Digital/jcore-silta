@@ -1242,8 +1242,8 @@ msgstr "Yksi riviä kohden. Päätä rivi merkkiin *, jolloin se vastaa kaikkia 
 #. translators: 1: finished items, 2: all items.
 #: build/admin.js:30
 #, js-format
-msgid "%1$d of %2$d written"
-msgstr "%1$d/%2$d kirjoitettu"
+msgid "%1$d of %2$d done"
+msgstr "%1$d/%2$d valmiina"
 
 #. translators: 1: finished items, 2: all items.
 #: build/admin.js:31

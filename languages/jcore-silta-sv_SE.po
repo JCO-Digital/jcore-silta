@@ -1242,8 +1242,8 @@ msgstr "En per rad. Avsluta en rad med * för att matcha alla nycklar som börja
 #. translators: 1: finished items, 2: all items.
 #: build/admin.js:30
 #, js-format
-msgid "%1$d of %2$d written"
-msgstr "%1$d av %2$d skrivna"
+msgid "%1$d of %2$d done"
+msgstr "%1$d av %2$d klara"
 
 #. translators: 1: finished items, 2: all items.
 #: build/admin.js:31

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { jobStatusLabel } from '../words';
-import { finished } from './JobProgress';
+import { percent } from './JobProgress';
 
 /**
  * Words for the tab title while a sync is busy.
@@ -17,8 +17,8 @@ import { finished } from './JobProgress';
  */
 function busyText( flow ) {
 	const isRunning = flow.step === 'running';
-	const total = flow.progress?.total || 0;
-	if ( ! total ) {
+	const done = percent( flow.progress, isRunning );
+	if ( undefined === done ) {
 		return isRunning
 			? sprintf(
 					/* translators: %s: target site name. */
@@ -27,21 +27,17 @@ function busyText( flow ) {
 				)
 			: __( 'Preparing the sync', 'jcore-silta' );
 	}
-	const percent = Math.round(
-		( Math.min( total, finished( flow.progress, isRunning ) ) / total ) *
-			100
-	);
 	return isRunning
 		? sprintf(
 				/* translators: 1: percentage done, 2: target site name. */
 				__( '%1$d%% · Syncing to %2$s', 'jcore-silta' ),
-				percent,
+				done,
 				flow.targetLabel
 			)
 		: sprintf(
 				/* translators: %d: percentage done. */
 				__( '%d%% · Preparing the sync', 'jcore-silta' ),
-				percent
+				done
 			);
 }
 
