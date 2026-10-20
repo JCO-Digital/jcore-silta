@@ -34,6 +34,9 @@ final class Meta_Filter {
 		'_wp_desired_post_slug',
 		'_wp_suggested_privacy_policy_content',
 		'_yoast_indexnow_last_ping',
+		// The oEmbed cache (`_oembed_<hash>` and `_oembed_time_<hash>`): WordPress
+		// fetches it again, and prints the cached HTML without filtering it.
+		'_oembed_*',
 		'_jcore_silta_*',
 	);
 

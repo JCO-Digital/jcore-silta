@@ -174,7 +174,7 @@ final class Importer {
 		if ( ! $attachment ) {
 			if ( $wants( 'fields.page_template' ) ) {
 				$template = (string) ( $fields['page_template'] ?? '' );
-				$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, array( '_wp_page_template' ), '' === $template ? array() : array( '_wp_page_template' => array( $template ) ), true ) );
+				$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, array( '_wp_page_template' ), '' === $template ? array() : array( '_wp_page_template' => array( $template ) ), true, $restore ) );
 			}
 			if ( $wants( 'fields.post_format' ) && post_type_supports( (string) $incoming['post_type'], 'post-formats' ) ) {
 				set_post_format( $id, (string) ( $fields['post_format'] ?? '' ) );
@@ -188,7 +188,7 @@ final class Importer {
 			}
 			if ( $wants( 'featured_image' ) ) {
 				$thumbnail = (int) ( $incoming['featured_image'] ?? 0 );
-				Meta_Writer::replace( 'post', $id, array( '_thumbnail_id' ), $thumbnail > 0 ? array( '_thumbnail_id' => array( (string) $thumbnail ) ) : array(), true );
+				Meta_Writer::replace( 'post', $id, array( '_thumbnail_id' ), $thumbnail > 0 ? array( '_thumbnail_id' => array( (string) $thumbnail ) ) : array(), true, $restore );
 			}
 		}
 
@@ -200,7 +200,7 @@ final class Importer {
 				continue;
 			}
 			$keys     = array_merge( array_keys( $theirs[ $group ] ?? array() ), array_keys( $ours[ $group ] ?? array() ) );
-			$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array() ) );
+			$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array(), false, $restore ) );
 		}
 
 		foreach ( (array) ( $incoming['terms'] ?? array() ) as $taxonomy => $ids ) {

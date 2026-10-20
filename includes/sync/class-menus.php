@@ -163,7 +163,7 @@ final class Menus {
 			$id = wp_update_nav_menu_item( $menu_id, 0, wp_slash( self::item_args( $item, (int) ( $new_ids[ $item['parent'] ] ?? 0 ) ) ) );
 			if ( ! is_wp_error( $id ) ) {
 				$new_ids[ $item['id'] ] = (int) $id;
-				$warnings               = array_merge( $warnings, self::write_item_meta( (int) $id, (array) ( $item['meta'] ?? array() ) ) );
+				$warnings               = array_merge( $warnings, self::write_item_meta( (int) $id, (array) ( $item['meta'] ?? array() ), true ) );
 			}
 		}
 
@@ -346,14 +346,15 @@ final class Menus {
 	/**
 	 * Replaces an item's custom meta (plugins add icons, mega menu settings…).
 	 *
-	 * @param int                     $id   Item ID.
-	 * @param array<string, string[]> $meta Raw meta.
+	 * @param int                     $id      Item ID.
+	 * @param array<string, string[]> $meta    Raw meta.
+	 * @param bool                    $restore Whether this restores a snapshot (written unfiltered).
 	 *
 	 * @return string[] Warnings for rejected values.
 	 */
-	private static function write_item_meta( int $id, array $meta ): array {
+	private static function write_item_meta( int $id, array $meta, bool $restore = false ): array {
 		$current = array_filter( State::raw_meta( 'post', $id ), array( Meta_Filter::class, 'synced' ), ARRAY_FILTER_USE_KEY );
-		return Meta_Writer::replace( 'post', $id, array_unique( array_merge( array_keys( $current ), array_keys( $meta ) ) ), $meta );
+		return Meta_Writer::replace( 'post', $id, array_unique( array_merge( array_keys( $current ), array_keys( $meta ) ) ), $meta, false, $restore );
 	}
 
 	/**
