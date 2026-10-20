@@ -36,7 +36,7 @@ This document records the decisions from the initial design session (2026-10-13)
 2. On the initiator: *Connections → Add connection* and paste the string. If the initiator has no key pair yet, it creates one now. It calls the remote's `POST pair` with the token, its public key and its site details, signed with the new private key to prove it holds that key.
 3. The remote checks the token and burns it. It stores the initiator's public key, label, scopes, site UUID and home URL, along with the admin who created the token. It answers with its own site details and the granted scopes.
 
-The site UUID in step 2 is the initiator's own claim. So if the remote already trusts a different, enabled key for that UUID, pairing is refused until an admin revokes the old key: a pairing token can't take over another site's identity and mappings. The REST URL in the remote's answer must keep the host from the pairing string.
+The site UUID in step 2 is the initiator's own claim. So if the remote already trusts a different, enabled key for that UUID, pairing is refused until an admin revokes the old key: a pairing token can't take over another site's identity and mappings. The REST URL in the remote's answer must keep the host from the pairing string. On the initiator, a pairing string for a site it is already connected to must point at the same host and port, or it is refused until an admin removes the old connection: whoever writes a pairing string also answers the pair request, so otherwise one could move a connection, its mappings and its saved basic auth to another server. Re-pairing with the same host reuses the saved basic auth.
 
 Once pairing is done, the pasted string is useless, so it doesn't matter if it lingers in Slack or email.
 

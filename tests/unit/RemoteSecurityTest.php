@@ -16,6 +16,8 @@ use Jcore\Silta\Remote\Client;
 use Jcore\Silta\Remote\Connections;
 use Jcore\Silta\Remote\Trusted_Keys;
 use Jcore\Silta\Remote\Verifier;
+use Jcore\Silta\Site;
+use Jcore\Silta\Util;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -385,6 +387,47 @@ final class RemoteSecurityTest extends TestCase {
 		$this->assertArrayNotHasKey( 'auth', $view );
 		$this->assertSame( 'username', $view['auth_user'] );
 		$this->assertTrue( $view['has_auth'] );
+	}
+
+	/**
+	 * Checks a pairing string can't move a known site's connection to another
+	 * host, before anything is sent there.
+	 *
+	 * @return void
+	 */
+	public function test_pairing_string_cannot_move_a_known_site_to_another_host(): void {
+		( new ReflectionProperty( Site::class, 'record' ) )->setValue( null, array( 'uuid' => self::JOB ) );
+		( new ReflectionProperty( Identity::class, 'seed' ) )->setValue( null, str_repeat( 's', 32 ) );
+		$GLOBALS['jcore_silta_remote_options'][ Connections::OPTION ] = array(
+			'connection' => array(
+				'id'    => 'connection',
+				'site'  => self::PEER,
+				'rest'  => 'https://remote.test/wp-json/',
+				'label' => 'Production',
+				'auth'  => array(
+					'user' => 'staging',
+					'pass' => 'encrypted-secret',
+				),
+				'rules' => array(),
+			),
+		);
+		unset( $GLOBALS['jcore_silta_remote_request'] );
+
+		$pairing = Trusted_Keys::PREFIX . Util::base64url_encode(
+			(string) wp_json_encode(
+				array(
+					'rest'  => 'https://attacker.test/wp-json/',
+					'site'  => self::PEER,
+					'token' => 'token',
+				)
+			)
+		);
+		$error   = Connections::add( $pairing );
+
+		$this->assertInstanceOf( WP_Error::class, $error );
+		$this->assertSame( 'jcore_silta_moved', $error->get_error_code() );
+		$this->assertArrayNotHasKey( 'jcore_silta_remote_request', $GLOBALS );
+		$this->assertSame( 'https://remote.test/wp-json/', $GLOBALS['jcore_silta_remote_options'][ Connections::OPTION ]['connection']['rest'] );
 	}
 
 	/**
