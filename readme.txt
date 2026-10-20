@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -105,7 +105,17 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.4.0 (2026-10-19) =
+= 0.4.1 (2026-10-20) =
+
+* Fix: sync - filter HTML in synced meta and Gravity Forms forms
+* Fix: connections - refuse a pairing string that moves a known site to another host
+* Fix: jobs - keep syncs that wrote something in the history
+* Fix: jobs - stop non-admins choosing which remote post a push overwrites
+* Fix: jobs - only administrators change replacement rules for a run
+* CI: release - skip the dist repo until it exists
+* CI: release - post release notifications to the Slack channel by ID
+
+= v0.4.0 (2026-10-19) =
 
 * Feature: sync - sync Gravity Forms forms and remap the form IDs posts embed
 * Feature: sync - keep jcore-maailma global content and its block intact
