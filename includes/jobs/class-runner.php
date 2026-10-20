@@ -147,7 +147,11 @@ final class Runner {
 			return new WP_Error( 'jcore_silta_empty', __( 'Select something to sync.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
 
-		$rules = Connections::clean_rules( (array) ( $options['rules'] ?? $connection['rules'] ?? array() ) );
+		// Rules rewrite what is synced, and on a push the remote writes the result
+		// as its pairing admin, usually without kses. Only administrators choose
+		// rules per run; everyone else syncs with the connection's saved rules.
+		$rules = Capabilities::unrestricted() && isset( $options['rules'] ) ? $options['rules'] : ( $connection['rules'] ?? array() );
+		$rules = Connections::clean_rules( (array) $rules );
 		if ( ! empty( $options['save_rules'] ) ) {
 			Connections::update( $connection_id, array( 'rules' => $rules ) );
 		}
