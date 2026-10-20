@@ -495,10 +495,28 @@ final class Runner {
 	/**
 	 * Cancels the job. What was already written stays, and can be undone.
 	 *
-	 * @return void
+	 * Only a job that hasn't finished can be cancelled, and the status it was
+	 * cancelled in is kept: deleting a cancelled job is only allowed when it
+	 * never ran, so a finished sync can't be cancelled and deleted to drop it
+	 * from the history along with its undo.
+	 *
+	 * @return true|WP_Error
 	 */
-	public function cancel(): void {
-		$this->save( array( 'status' => 'cancelled' ) );
+	public function cancel(): bool|WP_Error {
+		if ( ! in_array( $this->job['status'], array( 'preparing', 'ready', 'running' ), true ) ) {
+			return new WP_Error( 'jcore_silta_not_cancellable', __( 'Only a sync that has not finished can be stopped.', 'jcore-silta' ), array( 'status' => 409 ) );
+		}
+
+		$state                   = (array) $this->job['state'];
+		$state['cancelled_from'] = $this->job['status'];
+		$this->save(
+			array(
+				'status' => 'cancelled',
+				'state'  => $state,
+			)
+		);
+
+		return true;
 	}
 
 	/**

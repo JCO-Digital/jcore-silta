@@ -159,7 +159,7 @@ Added after the initial design as a sync kind next to menus. Nothing here was di
   - **List table actions:** "Push to…" / "Pull from…" row and bulk actions that open the Silta page with those posts selected.
   - **Block editor panel:** this post's status on each connected site (in sync / changed / not synced), with a quick diff and push.
   - **WP-CLI:** `wp silta connections`, `wp silta push`, `wp silta pull`, `wp silta diff`, `wp silta jobs`, `wp silta undo`.
-- **Decided: jobs are stored and driven by the browser.** The job (selection, options, plan, per-item status) is saved on the initiator. The UI runs it in small REST batches with a progress bar. A closed tab can be resumed from history, and WP-CLI runs the same job without time limits.
+- **Decided: jobs are stored and driven by the browser.** The job (selection, options, plan, per-item status) is saved on the initiator. The UI runs it in small REST batches with a progress bar. A closed tab can be resumed from history, and WP-CLI runs the same job without time limits. A job can be stopped while it is preparing or running; what it wrote stays and can be undone. Only a job that never ran can be deleted, so a sync that wrote something stays in the history.
 
 ## Architecture sketch
 

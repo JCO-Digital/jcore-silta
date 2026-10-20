@@ -267,7 +267,9 @@ final class Jobs_Controller extends Controller {
 		if ( null === $job || ! Jobs::user_permission( $job ) ) {
 			return new WP_Error( 'jcore_silta_not_found', __( 'No such sync.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
-		if ( ! in_array( $job['status'], array( 'preparing', 'ready', 'cancelled' ), true ) ) {
+		$never_ran = in_array( $job['status'], array( 'preparing', 'ready' ), true )
+			|| ( 'cancelled' === $job['status'] && in_array( $job['state']['cancelled_from'] ?? '', array( 'preparing', 'ready' ), true ) );
+		if ( ! $never_ran ) {
 			return new WP_Error( 'jcore_silta_keep', __( 'A sync that has written something stays in the history.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
@@ -354,7 +356,10 @@ final class Jobs_Controller extends Controller {
 			return $this->respond( $runner );
 		}
 
-		$runner->cancel();
+		$cancelled = $runner->cancel();
+		if ( is_wp_error( $cancelled ) ) {
+			return $this->respond( $cancelled );
+		}
 
 		return rest_ensure_response( $runner->progress() );
 	}
