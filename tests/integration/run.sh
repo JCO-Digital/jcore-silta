@@ -15,16 +15,18 @@ cd "$(dirname "$0")/../../dev"
 if [ "${1:-}" != "--no-reset" ]; then
 	./reset.sh >/dev/null || { echo "dev/reset.sh failed"; exit 1; }
 fi
+# setup.sh leaves them running; this is for a stack that was stopped since.
+docker compose --progress quiet up -d cli-staging cli-production || { echo "the CLI containers did not start"; exit 1; }
 
 PROD=localhost:8091
 STAGE=localhost:8090
 failures=0
 
-# wp <staging|production> <args...>
+# wp <staging|production> <args...>, in the site's idle CLI container.
 wp() {
 	site=$1
 	shift
-	docker compose --progress quiet run --rm -T "cli-$site" wp --user=admin "$@" 2>/dev/null
+	docker compose exec -T "cli-$site" wp --user=admin "$@" 2>/dev/null
 }
 
 # check <name> <expected> <actual>
@@ -121,9 +123,8 @@ contains "pushing it changes nothing" "unchanged" "$(wp staging silta push "$PRO
 
 echo "== New media"
 php -r '$i = imagecreatetruecolor( 1200, 800 ); imagefill( $i, 0, 0, imagecolorallocate( $i, 200, 80, 40 ) ); imagejpeg( $i, "/tmp/silta-it.jpg", 85 );'
-docker compose cp /tmp/silta-it.jpg staging:/tmp/silta-it.jpg >/dev/null 2>&1
-docker compose exec -T staging chmod 644 /tmp/silta-it.jpg
-att=$(docker compose --progress quiet run --rm -T -v /tmp/silta-it.jpg:/tmp/silta-it.jpg:ro cli-staging wp --user=admin media import /tmp/silta-it.jpg --title="Integraatiotesti" --alt="Testikuva" --porcelain 2>/dev/null | tail -1)
+docker compose exec -T cli-staging sh -c 'cat > /tmp/silta-it.jpg' </tmp/silta-it.jpg
+att=$(wp staging media import /tmp/silta-it.jpg --title="Integraatiotesti" --alt="Testikuva" --porcelain | tail -1)
 file=$(wp staging post meta get "$att" _wp_attached_file)
 content="<!-- wp:image {\"id\":$att} --><figure class=\"wp-block-image\"><img src=\"http://$STAGE/wp-content/uploads/$file\" class=\"wp-image-$att\"/></figure><!-- /wp:image -->"
 pid=$(wp staging post create --post_type=post --post_status=publish --post_title="Media test" --post_name=silta-media-test --post_content="$content" --porcelain)
@@ -299,7 +300,7 @@ wp production eval 'update_option( "jcore_silta_site", array( "uuid" => wp_gener
 wp production option get blogname >/dev/null
 contains "trusted keys switched off" "no (inherited)" "$(wp production silta keys list --format=csv)"
 contains "connections marked inherited" "inherited" "$(wp production silta connections list --format=csv)"
-out=$(docker compose --progress quiet run --rm -T cli-staging wp --user=admin silta push "$PROD" --post=35 --yes 2>&1)
+out=$(docker compose exec -T cli-staging wp --user=admin silta push "$PROD" --post=35 --yes 2>&1)
 contains "staging can no longer push" "Error" "$out"
 
 echo

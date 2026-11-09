@@ -18,13 +18,15 @@ docker compose up -d && ./setup.sh   # build; safe to re-run, finished steps are
 docker compose stop                  # stop; the data stays in the volumes
 ```
 
-To run WP-CLI, use the `cli-staging` and `cli-production` services:
+To run WP-CLI, use the `cli-staging` and `cli-production` services. `setup.sh` leaves them running idle, so `exec` into them; that is much faster than starting a new container per command with `docker compose run --rm cli-staging wp ...`, which also works:
 
 ```sh
-docker compose run --rm cli-staging wp post list --post_type=any
-docker compose run --rm cli-production wp option get silta_dev_seed --format=json
+docker compose exec cli-staging wp post list --post_type=any
+docker compose exec cli-production wp option get silta_dev_seed --format=json
 docker compose exec staging tail -f wp-content/debug.log
 ```
+
+After `docker compose stop`, `docker compose up -d` starts only the sites; `docker compose up -d cli-staging cli-production` brings the CLI containers back too (the integration tests do that themselves).
 
 Both sites mount the repository read-only as `wp-content/plugins/jcore-silta`, so code changes take effect immediately. Each site has its own random salts in `wp-config.php` (Silta derives its encryption key from them). `WP_ENVIRONMENT_TYPE` is `local`, so plain-HTTP remotes are allowed. `WP_DEBUG_LOG` is on and `WP_DEBUG_DISPLAY` is off.
 
