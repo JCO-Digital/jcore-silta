@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a branch or pull request cancels its run still in progress:
+# only the latest commit's result matters.
+concurrency:
+  group: integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   two-sites:
     name: Two-site sync
