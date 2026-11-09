@@ -87,6 +87,11 @@ services:
     profiles: [cli]
     user: "33:33"
     depends_on: [db, staging]
+    # Share the site container's network instead of getting one of its own.
+    # setup.sh and the integration tests start hundreds of these; each new
+    # network interface makes Chromium-based browsers on the host abort
+    # requests with ERR_NETWORK_CHANGED. db and the other site still resolve.
+    network_mode: "service:staging"
     environment:
       <<: *staging-env
       WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
@@ -108,6 +113,11 @@ services:
     profiles: [cli]
     user: "33:33"
     depends_on: [db, production]
+    # Share the site container's network instead of getting one of its own.
+    # setup.sh and the integration tests start hundreds of these; each new
+    # network interface makes Chromium-based browsers on the host abort
+    # requests with ERR_NETWORK_CHANGED. db and the other site still resolve.
+    network_mode: "service:production"
     environment:
       <<: *production-env
       WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
@@ -128,6 +138,7 @@ services:
   copy-uploads:
     image: alpine
     profiles: [tools]
+    network_mode: none
     volumes:
       - staging:/staging:ro
       - production:/production
