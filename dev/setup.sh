@@ -109,6 +109,10 @@ fi
 
 echo "== Making staging and production diverge"
 wp staging eval-file /seed/diverge-staging.php --user=admin
+# Production's edit of the welcome post must be at least a second newer than
+# staging's: without a sync mapping, Silta flags the conflict only when the
+# target's modified time (whole seconds) is later than the source's.
+sleep 1
 wp production eval-file /seed/diverge-production.php --user=admin
 
 echo "== staging: global content (jcore-maailma)"
