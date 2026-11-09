@@ -448,6 +448,10 @@ final class WooCommerce {
 			return;
 		}
 
+		// WooCommerce caches a product's type, and the terms were written
+		// behind its back.
+		\WC_Cache_Helper::invalidate_cache_group( 'product_' . $id );
+
 		if ( $created && ! $restore ) {
 			$stock = self::incoming_stock( $incoming );
 			if ( ! empty( $stock ) ) {
@@ -575,7 +579,7 @@ final class WooCommerce {
 			$product->save();
 
 			wp_set_post_terms( $id, self::visibility_terms( $product ), 'product_visibility', false );
-			self::refresh_meta_lookup( $id );
+			self::refresh_meta_lookup( $product );
 			if ( $lookup && class_exists( LookupDataStore::class ) ) {
 				wc_get_container()->get( LookupDataStore::class )->on_product_changed( $product );
 			}
@@ -620,14 +624,18 @@ final class WooCommerce {
 	}
 
 	/**
-	 * Refreshes a product's row in `wc_product_meta_lookup`.
+	 * Refreshes a product's row in `wc_product_meta_lookup`, through the
+	 * product type's own data store: an extension's (a bundle's) reads its
+	 * prices from meta of its own.
 	 *
-	 * @param int $id Product or variation ID.
+	 * @param \WC_Product $product Product or variation.
 	 *
 	 * @return void
 	 */
-	private static function refresh_meta_lookup( int $id ): void {
-		$store = new \WC_Product_Data_Store_CPT();
+	private static function refresh_meta_lookup( \WC_Product $product ): void {
+		$id    = $product->get_id();
+		$class = $product->get_data_store() ? $product->get_data_store()->get_current_class_name() : '';
+		$store = is_string( $class ) && is_a( $class, \WC_Product_Data_Store_CPT::class, true ) ? new $class() : new \WC_Product_Data_Store_CPT();
 		if ( method_exists( $store, 'refresh_product_lookup_table' ) ) {
 			$store->refresh_product_lookup_table( $id );
 
