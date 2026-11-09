@@ -45,14 +45,42 @@ Without a key, `install.sh` prints a note and exits, and both sites run without 
 
 In CI the key comes from the `GRAVITY_FORMS_LICENSE_KEY` repository secret (and the optional `GRAVITY_FORMS_SITE_URL` repository variable); see `.github/workflows/integration.yml`.
 
+`gravityforms/install.sh` and `acf-pro/install.sh` are thin wrappers around `lib/install-composer-plugin.sh`, which does the `.env` reading, the `COMPOSER_AUTH` handoff and the checks for both.
+
+## ACF Pro (optional)
+
+Without a key, both sites run [Secure Custom Fields](https://wordpress.org/plugins/secure-custom-fields/), the free fork of ACF that has the same field types (repeater, flexible content, gallery, clone, ACF blocks) and stores them the same way. To test against ACF Pro itself, add a key that can install from [ACF's Composer repository](https://www.advancedcustomfields.com/resources/installing-acf-pro-with-composer/):
+
+```sh
+cp .env.example .env    # set ACF_PRO_LICENSE_KEY, and ACF_PRO_SITE_URL to a site URL the license is active for
+./reset.sh              # or ./setup.sh on an existing stack
+```
+
+It works like Gravity Forms: `acf-pro/install.sh` installs `wpengine/advanced-custom-fields-pro` from `acf-pro/composer.json` into `acf-pro/plugins/advanced-custom-fields-pro` (basic auth on `connect.advancedcustomfields.com`: the key is the user name, the site URL the password). `setup.sh` then deactivates Secure Custom Fields, copies ACF Pro into each site and activates it; the two are never active together. Compose passes the key to the sites, where it defines `ACF_PRO_LICENSE`. The seed and the ACF integration checks are the same either way; the test run prints which one it used. Running `./setup.sh` again without the installed files switches the sites back to Secure Custom Fields.
+
+In CI the key comes from the `ACF_PRO_LICENSE_KEY` repository secret (and the optional `ACF_PRO_SITE_URL` repository variable).
+
+## WooCommerce and paid extensions
+
+WooCommerce itself is free and always installed from wordpress.org, after all other seeding: it creates its shop pages when it is activated, which would otherwise shift the post IDs the integration tests use. Set `SILTA_WOOCOMMERCE` to a version's zip URL to test another version, or to `none` to leave it out.
+
+Paid extensions from woocommerce.com, such as WooCommerce Product Bundles, have no Composer repository that takes a license key. Download their zips from your woocommerce.com account (*My Account → Downloads*) and put them in `woocommerce/extensions/`; `setup.sh` installs and activates every zip there on both sites (with `--force`, so a newer zip upgrades the plugin). The CLI containers mount the folder at `/woocommerce-extensions`. Everything in it except its README is git-ignored, and the repository is public, so never commit one. CI has no way to fetch them and runs without them.
+
+To add an extension:
+
+1. Put its zip in `woocommerce/extensions/`.
+2. If it needs content, add `seed/woocommerce/<plugin slug>.php` (the plugin's folder name, e.g. `woocommerce-product-bundles`). `setup.sh` runs it after `seed/woocommerce.php` on each site where that plugin is active, with the site name as its argument. It adds its IDs under `extensions.<plugin slug>` in the `silta_dev_woo_seed` option; `seed/woocommerce/woocommerce-product-bundles.php` is the example to copy.
+3. Add its checks to `tests/integration/run.sh` in a block of its own, guarded by `active_on_both <plugin slug>`, so the run prints `skip` without it. `woo_ext <plugin slug> <name>` reads the IDs its seed stored.
+
 ## What `setup.sh` does
 
-1. Installs WordPress (Twenty Twenty-Five, `/%postname%/` permalinks) on both sites. It then installs Secure Custom Fields, Polylang and Yoast SEO from wordpress.org, [jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) from its latest GitHub release, Gravity Forms when it was installed (see above), and activates `jcore-silta`. If a plugin fails to install or activate, setup prints a warning and continues. Set `SILTA_MAAILMA_ZIP` to another release zip URL to test another Maailma version, or to `none` to leave it out.
+1. Installs WordPress (Twenty Twenty-Five, `/%postname%/` permalinks) on both sites. It then installs Polylang and Yoast SEO from wordpress.org, ACF Pro when it was installed or Secure Custom Fields otherwise, [jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) from its latest GitHub release, Gravity Forms when it was installed (see above), and activates `jcore-silta`. If a plugin fails to install or activate, setup prints a warning and continues. Set `SILTA_MAAILMA_ZIP` to another release zip URL to test another Maailma version, or to `none` to leave it out.
 2. Runs `seed/seed.php` to seed staging. This happens once, guarded by the `silta_dev_seeded` option.
 3. Clones staging into production, once (guarded by `silta_dev_cloned` on production). The clone dumps the `staging` database into a freshly recreated `production` database, then runs `wp search-replace http://localhost:8090 http://localhost:8091 --skip-columns=guid --all-tables`, then a copy of `wp-content/uploads` between the two volumes. Posts keep their IDs and their staging GUIDs.
 4. Makes the sites diverge with `seed/diverge-staging.php` and `seed/diverge-production.php`, once each. Then `seed/maailma.php` adds global content to staging only (see below).
 5. With Gravity Forms installed, runs `seed/gravityforms.php` on both sites, once each (guarded by `silta_dev_gf_seed`). It runs after the diverge step and the Maailma seed, so the post IDs the integration tests use are the same with and without Gravity Forms.
-6. Pairs the sites. Production issues a `read,write` token labelled "Staging" with `wp silta keys create-token`, and staging adds it with `wp silta connections add`. In the other direction, staging issues a `read` token labelled "Production" for production. While the plugin has no `wp silta` command, this step prints a note and skips; once the command exists, run `./setup.sh` again.
+6. Installs WooCommerce and the extension zips in `woocommerce/extensions/` on both sites, then runs `seed/woocommerce.php` on each, once (guarded by `silta_dev_woo_seed`).
+7. Pairs the sites. Production issues a `read,write` token labelled "Staging" with `wp silta keys create-token`, and staging adds it with `wp silta connections add`. In the other direction, staging issues a `read` token labelled "Production" for production. While the plugin has no `wp silta` command, this step prints a note and skips; once the command exists, run `./setup.sh` again.
 
 ## Seed content
 
@@ -70,6 +98,7 @@ In CI the key comes from the `GRAVITY_FORMS_LICENSE_KEY` repository secret (and 
   - One sticky post, one draft, one scheduled post (30 days ahead), and one password-protected post (password `silta`).
   - Featured images on most posts.
 - **Gravity Forms** (only when installed): on staging, *Yhteydenotto* (text, email, textarea and an HTML field with an absolute link, a confirmation that redirects to Yhteystiedot, a notification) embedded in the page *Ota yhteyttä* with the `gravityforms/form` block, and *Uutiskirje* embedded in the post *Tilaa uutiskirje* with the `[gravityform]` shortcode. On production, *Tuotannon palaute*, a form staging doesn't have, so staging's forms get other IDs there. `wp option get silta_dev_gf_seed --format=json` lists the IDs.
+- **WooCommerce** (unless `SILTA_WOOCOMMERCE=none`): on both sites the global attribute *Väri* (`pa_vari`). On staging only: categories *Vaatteet › Paidat* and *Tarvikkeet* (with an image in `thumbnail_id` term meta) and the tag *Lahjat*; *Silta-muki* (simple: SKU, sale price, managed stock, a gallery), *Silta-juliste* (simple, with an upsell and a cross-sell), *Silta-paita* (variable on `pa_vari`, plus a custom attribute, two variations with their own SKU, price, stock and image), *Silta-pipo* (with the staging-only attribute *Koko*, `pa_koko`), *Silta-lahjasetti* (grouped), the coupon *silta10* limited to two products, and with WooCommerce Product Bundles installed, the bundle *Silta-paketti* (muki and paita). On production, *Tuotannon tuote*, a product staging doesn't have. `wp option get silta_dev_woo_seed --format=json` lists the IDs.
 - **Menus:** *Main* (fi) holds a page with a nested child page, a category, a post, a custom link to `/events/` and an external link. *Main EN* is its English counterpart. Both are in the `silta-primary` location, one per language.
 
 **Global content** (jcore-maailma, staging only, created after the clone; IDs in `wp option get silta_dev_maailma --format=json`): *Ota yhteyttä* (fi), which embeds an image and *Aukioloajat* by slug only, with its translation *Contact us* (en); two items titled *Alatunniste*, the second with the slug `alatunniste-2`; and the page *Maailma-esittely*, which shows *Ota yhteyttä* with the JCORE Global Content block.

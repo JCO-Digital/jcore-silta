@@ -3,16 +3,21 @@
 # seeds staging, clones it into production, makes the two drift apart and
 # pairs them. Each step is skipped once it has run; start over with ./reset.sh.
 # With a Gravity Forms license key in dev/.env (see .env.example), both sites
-# also get Gravity Forms and a few forms.
+# also get Gravity Forms and a few forms. With an ACF Pro key they run ACF Pro
+# instead of Secure Custom Fields. WooCommerce comes from wordpress.org, and
+# paid WooCommerce extensions from the zips in woocommerce/extensions/.
 #   docker compose up -d && ./setup.sh
 #
 # jcore-maailma is installed from its latest GitHub release. Point
 # SILTA_MAAILMA_ZIP at another zip URL to test another version, or set it to
-# "none" to leave Maailma out.
+# "none" to leave Maailma out. SILTA_WOOCOMMERCE works the same way for
+# WooCommerce (a wordpress.org slug, a version's zip URL, or "none").
 set -e
 cd "$(dirname "$0")"
 
 SILTA_MAAILMA_ZIP=${SILTA_MAAILMA_ZIP:-https://github.com/JCO-Digital/jcore-maailma/releases/latest/download/jcore-maailma.zip}
+SILTA_WOOCOMMERCE=${SILTA_WOOCOMMERCE:-woocommerce}
+ACF_PRO=acf-pro/plugins/advanced-custom-fields-pro/acf.php
 
 # wp <staging|production> <args...>
 wp() {
@@ -34,10 +39,12 @@ pair() {
 	wp "$1" option update silta_dev_paired "$2" >/dev/null
 }
 
-# Gravity Forms is optional: without a license key the install script skips it.
-# The directory must exist before Compose mounts it, or Docker creates it as root.
-mkdir -p gravityforms/plugins
+# Gravity Forms and ACF Pro are optional: without a license key the install
+# scripts skip them. The directories must exist before Compose mounts them, or
+# Docker creates them as root.
+mkdir -p gravityforms/plugins acf-pro/plugins woocommerce/extensions
 gravityforms/install.sh || echo "WARNING: Gravity Forms could not be installed; carrying on without it."
+acf-pro/install.sh || echo "WARNING: ACF Pro could not be installed; carrying on with Secure Custom Fields."
 
 # Over TCP: the MariaDB entrypoint's temporary init server only listens on a socket.
 until docker compose exec -T db mariadb -h127.0.0.1 -uwordpress -pwordpress -e 'SELECT 1' production >/dev/null 2>&1; do sleep 2; done
@@ -54,7 +61,17 @@ for site in staging production; do
 	echo "== $site: WordPress and plugins"
 	wp "$site" core is-installed 2>/dev/null || wp "$site" core install --url="$url" --title="$title" \
 		--admin_user=admin --admin_password=admin --admin_email=admin@example.com --skip-email
-	wp "$site" plugin install secure-custom-fields polylang wordpress-seo --activate
+	wp "$site" plugin install polylang wordpress-seo --activate
+	# ACF Pro when its install script installed it, otherwise Secure Custom
+	# Fields (the free fork with the same field types). Never both at once.
+	if [ -f "$ACF_PRO" ]; then
+		wp "$site" plugin deactivate secure-custom-fields >/dev/null 2>&1 || true
+		docker compose --progress quiet run --rm -T "cli-$site" sh -c 'rm -rf wp-content/plugins/advanced-custom-fields-pro && cp -R /acf-pro/advanced-custom-fields-pro wp-content/plugins/advanced-custom-fields-pro'
+		wp "$site" plugin activate advanced-custom-fields-pro || echo "WARNING: ACF Pro did not activate on $site."
+	else
+		wp "$site" plugin deactivate advanced-custom-fields-pro >/dev/null 2>&1 || true
+		wp "$site" plugin install secure-custom-fields --activate
+	fi
 	if [ "$SILTA_MAAILMA_ZIP" != "none" ] && ! wp "$site" plugin is-active jcore-maailma 2>/dev/null; then
 		wp "$site" plugin install "$SILTA_MAAILMA_ZIP" --force --activate || echo "WARNING: jcore-maailma could not be installed on $site; carrying on without it."
 	fi
@@ -98,6 +115,34 @@ if [ -f gravityforms/plugins/gravityforms/gravityforms.php ]; then
 	echo "== Gravity Forms content"
 	wp staging eval-file /seed/gravityforms.php staging --user=admin
 	wp production eval-file /seed/gravityforms.php production --user=admin
+fi
+
+# WooCommerce creates its shop pages when it is activated, so it comes after
+# all other seeding: the post IDs the integration tests use stay the same with
+# and without it. Production gets it too, but no products of staging's.
+if [ "$SILTA_WOOCOMMERCE" != "none" ]; then
+	echo "== WooCommerce"
+	for site in staging production; do
+		if ! wp "$site" plugin is-active woocommerce >/dev/null 2>&1; then
+			wp "$site" plugin install "$SILTA_WOOCOMMERCE" --force --activate || echo "WARNING: WooCommerce could not be installed on $site; carrying on without it."
+		fi
+		if wp "$site" plugin is-active woocommerce >/dev/null 2>&1; then
+			for zip in woocommerce/extensions/*.zip; do
+				[ -f "$zip" ] || continue
+				wp "$site" plugin install "/woocommerce-extensions/$(basename "$zip")" --force --activate || echo "WARNING: $(basename "$zip") could not be installed on $site."
+			done
+			wp "$site" eval-file /seed/woocommerce.php "$site" --user=admin
+			# Content for an extension: seed/woocommerce/<plugin slug>.php, run
+			# only where that plugin is active.
+			for seed in seed/woocommerce/*.php; do
+				[ -f "$seed" ] || continue
+				slug=$(basename "$seed" .php)
+				if wp "$site" plugin is-active "$slug" >/dev/null 2>&1; then
+					wp "$site" eval-file "/seed/woocommerce/$slug.php" "$site" --user=admin
+				fi
+			done
+		fi
+	done
 fi
 
 echo "== Pairing"

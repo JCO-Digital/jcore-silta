@@ -41,14 +41,19 @@ jobs:
           composer install --no-interaction --prefer-dist
           pnpm build
 
-      # Gravity Forms is commercial: dev/setup.sh installs it from its Composer
-      # repository only when the GRAVITY_FORMS_LICENSE_KEY secret is set (an
-      # Elite or Developer license). Pull requests from forks get no secrets,
-      # so there the Gravity Forms checks are skipped and the rest still runs.
+      # Gravity Forms and ACF Pro are commercial: dev/setup.sh installs them
+      # from their Composer repositories only when their license key secrets
+      # are set (Gravity Forms: an Elite or Developer license). Without ACF Pro
+      # the sites run Secure Custom Fields. Pull requests from forks get no
+      # secrets, so there the Gravity Forms checks are skipped and the ACF
+      # checks run against Secure Custom Fields. Paid WooCommerce extensions
+      # have no Composer repository and are never installed here.
       - name: Run the integration tests
         env:
           GRAVITY_FORMS_LICENSE_KEY: ${{ secrets.GRAVITY_FORMS_LICENSE_KEY }}
           GRAVITY_FORMS_SITE_URL: ${{ vars.GRAVITY_FORMS_SITE_URL }}
+          ACF_PRO_LICENSE_KEY: ${{ secrets.ACF_PRO_LICENSE_KEY }}
+          ACF_PRO_SITE_URL: ${{ vars.ACF_PRO_SITE_URL }}
         run: tests/integration/run.sh
 
       - name: Debug logs

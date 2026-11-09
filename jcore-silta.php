@@ -5,7 +5,6 @@
  * Description:       Syncs posts, custom fields, terms and media between WordPress sites, with search-replace and a diff mode for choosing what to sync.
  * Version:           0.4.2
  * Requires at least: 6.7
- * Tested up to:      7.1
  * Requires PHP:      8.2
  * Author:            J&Co Digital Oy
  * Author URI:        https://jco.fi
