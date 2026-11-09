@@ -224,15 +224,16 @@ wp silta key info | export | regenerate
 ## Testing
 
 - `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, jcore-maailma's block references, Gravity Forms blocks, shortcodes, confirmations, form matching and normalization, and request signatures.
-- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, Gravity Forms (when installed, see above: forms as dependencies, block and shortcode IDs remapped, URLs replaced, update and undo), and clone detection. CI runs it in `.github/workflows/integration.yml`. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
+- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, Gravity Forms (when installed, see above: forms as dependencies, block and shortcode IDs remapped, URLs replaced, update and undo), and clone detection. CI runs it in `.github/workflows/integration.yml`, the first job of the Release workflow. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
 
 ## Releasing
 
-Pushing to `main` runs `.github/workflows/release.yml`:
+Pushing to `main` runs `.github/workflows/release.yml`. Each job waits for the one before it:
 
-1. **check** – lint, unit tests, build, then run Plugin Check against the tree minus `.distignore`. Also runs on pull requests.
-2. **release** – [foonver](https://github.com/foonly/foonver) reads the conventional commits since the last tag, bumps the version, syncs it into `jcore-silta.php`, `readme.txt` and `package.json`, writes the `== Changelog ==` section of `readme.txt` and pushes the tag.
-3. **publish** – the reusable workflow in [jcore-update](https://github.com/JCO-Digital/jcore-update) builds the zip, attaches it to a GitHub release, registers the version with `update.jcore.fi`, pushes to the dist repository and posts to Slack.
+1. **integration** – the two-site integration tests (`.github/workflows/integration.yml`). Also runs on pull requests.
+2. **check** – lint, unit tests, build, then run Plugin Check against the tree minus `.distignore`. Also runs on pull requests.
+3. **release** – [foonver](https://github.com/foonly/foonver) reads the conventional commits since the last tag, bumps the version, syncs it into `jcore-silta.php`, `readme.txt` and `package.json`, writes the `== Changelog ==` section of `readme.txt` and pushes the tag.
+4. **publish** – the reusable workflow in [jcore-update](https://github.com/JCO-Digital/jcore-update) builds the zip, attaches it to a GitHub release, registers the version with `update.jcore.fi`, pushes to the dist repository and posts to Slack.
 
 Every commit that reaches `main` produces a release, so work on branches and merge through pull requests. Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/).
 
