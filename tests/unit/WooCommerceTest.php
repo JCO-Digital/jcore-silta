@@ -1,8 +1,8 @@
 <?php
 /**
  * Tests for the WooCommerce integration: ID meta, store data kept out of the
- * state, variation matching, global attributes, the refresh order and the
- * excluded order types.
+ * state, variation matching, global attributes, the refresh order, the
+ * excluded order types and product types the target lacks.
  *
  * @package Jcore\Silta
  */
@@ -435,5 +435,15 @@ final class WooCommerceTest extends TestCase {
 			'fields'    => array( 'post_parent' => $parent_id ),
 			'meta'      => $meta,
 		);
+	}
+
+	public function test_a_target_without_the_product_type_refuses_the_product(): void {
+		$known = array( 'simple', 'grouped', 'external', 'variable' );
+
+		$this->assertNull( WooCommerce::type_problem( 'simple', $known ) );
+		$this->assertNull( WooCommerce::type_problem( null, $known ), 'An older source sends no type.' );
+		$this->assertNull( WooCommerce::type_problem( 'bundle', array_merge( $known, array( 'bundle' ) ) ) );
+		$this->assertStringContainsString( 'WooCommerce Product Bundles is not active here', (string) WooCommerce::type_problem( 'bundle', $known ) );
+		$this->assertStringContainsString( '“booking” products: the WooCommerce extension that adds them', (string) WooCommerce::type_problem( 'booking', $known ) );
 	}
 }

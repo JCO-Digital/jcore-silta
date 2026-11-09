@@ -87,6 +87,17 @@ final class WooCommerce {
 	private const DERIVED_VISIBILITY = array( 'outofstock', 'rated-1', 'rated-2', 'rated-3', 'rated-4', 'rated-5' );
 
 	/**
+	 * Paid extensions that add product types, named in the preflight error
+	 * when the target lacks the type.
+	 */
+	private const TYPE_EXTENSIONS = array(
+		'bundle'                => 'WooCommerce Product Bundles',
+		'composite'             => 'WooCommerce Composite Products',
+		'subscription'          => 'WooCommerce Subscriptions',
+		'variable-subscription' => 'WooCommerce Subscriptions',
+	);
+
+	/**
 	 * Products and variations written in the current batch, by ID.
 	 *
 	 * @var array<int, true>
@@ -201,6 +212,10 @@ final class WooCommerce {
 			$post_type = (string) ( $state['post_type'] ?? '' );
 			if ( self::PRODUCT === $post_type ) {
 				$state['companions'] = array( self::VARIATION => self::variation_ids( $id ) );
+				$product_type        = \WC_Product_Factory::get_product_type( $id );
+				if ( is_string( $product_type ) && '' !== $product_type ) {
+					$extra['type'] = $product_type;
+				}
 			}
 			if ( in_array( $post_type, array( self::PRODUCT, self::VARIATION ), true ) ) {
 				$stock = array_intersect_key( State::raw_meta( 'post', $id ), array_flip( self::CREATE_META ) );
@@ -364,6 +379,15 @@ final class WooCommerce {
 			return $errors;
 		}
 
+		if ( self::PRODUCT === ( $record['post_type'] ?? '' ) && ! isset( $errors[''] ) ) {
+			$problem = self::type_problem( $record['extra']['woocommerce']['type'] ?? null, array_keys( (array) wc_get_product_types() ) );
+			if ( null !== $problem ) {
+				$errors[''] = $problem;
+
+				return $errors;
+			}
+		}
+
 		foreach ( (array) ( $record['terms'] ?? array() ) as $taxonomy => $ids ) {
 			$section = 'terms.' . $taxonomy;
 			if ( ! isset( $errors[ $section ] ) || ! str_starts_with( (string) $taxonomy, 'pa_' ) ) {
@@ -385,6 +409,39 @@ final class WooCommerce {
 		}
 
 		return $errors;
+	}
+
+	/**
+	 * Says why a product can't be written here when its type (from the
+	 * source's WooCommerce) is one this site doesn't have, because the
+	 * extension that adds it is missing. Without the type the product would
+	 * arrive as an empty product of another type.
+	 *
+	 * @param mixed    $type  Product type the source sent, if any.
+	 * @param string[] $known Product types this site has.
+	 *
+	 * @return string|null
+	 */
+	public static function type_problem( mixed $type, array $known ): ?string {
+		if ( ! is_string( $type ) || '' === $type || in_array( $type, $known, true ) ) {
+			return null;
+		}
+
+		$type = sanitize_key( $type );
+		if ( isset( self::TYPE_EXTENSIONS[ $type ] ) ) {
+			return sprintf(
+				/* translators: 1: product type, e.g. bundle, 2: extension name. */
+				__( 'This site has no “%1$s” products: %2$s is not active here. Activate it on this site, then sync again.', 'jcore-silta' ),
+				$type,
+				self::TYPE_EXTENSIONS[ $type ]
+			);
+		}
+
+		return sprintf(
+			/* translators: %s: product type. */
+			__( 'This site has no “%s” products: the WooCommerce extension that adds them is not active here. Activate it on this site, then sync again.', 'jcore-silta' ),
+			$type
+		);
 	}
 
 	/**
