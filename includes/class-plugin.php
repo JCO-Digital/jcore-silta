@@ -55,6 +55,7 @@ final class Plugin {
 		Cron::register();
 		Integrations\Maailma::register();
 		Integrations\Gravity_Forms::register();
+		Integrations\WooCommerce::register();
 
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( Site::class, 'check' ), 1 );

@@ -50,8 +50,9 @@ To also push from production to staging, or pull in the other direction, pair th
 * Menus with their items and locations, and reusable blocks.
 * Global content from JCORE Maailma. Global content posts sync like any other post type and keep their slugs, which templates use to find them. A page that shows global content with the JCORE Global Content block brings the global content along, and the block keeps pointing at it on the other site.
 * Gravity Forms forms, when Gravity Forms is active on both sites: fields, settings, confirmations, notifications and whether the form is active. Posts that embed a form with the Gravity Forms block, the `[gravityform]` shortcode or an ACF form field get the matching form's ID on the other site, and the forms they embed are offered along with them. A confirmation that redirects to a page points at the matching page.
+* WooCommerce products and coupons, when WooCommerce is active on both sites. A variable product always brings its variations, and variations removed on the source are offered for the trash. Galleries, upsells, cross-sells, grouped products and coupon product lists point at the matching products and images, and product attributes the other site doesn't have yet are created there. Stock, sales, ratings and coupon usage stay as the receiving store has them, so pushing to a live shop never resets them; a new product gets its stock from the source. Prices, stock status and WooCommerce's lookup tables are brought up to date after each sync.
 
-Comments, users, widgets, site settings and ACF options pages are not synced. Neither are Gravity Forms entries (what visitors submitted) and add-on feeds (payment, CRM and webhook settings, which usually differ between staging and production).
+Comments, users, widgets, site settings and ACF options pages are not synced. Neither are Gravity Forms entries (what visitors submitted) and add-on feeds (payment, CRM and webhook settings, which usually differ between staging and production). WooCommerce orders, customers, reviews, settings, shipping zones and tax rates are never synced.
 
 = Safety =
 
