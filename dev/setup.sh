@@ -19,11 +19,11 @@ SILTA_MAAILMA_ZIP=${SILTA_MAAILMA_ZIP:-https://github.com/JCO-Digital/jcore-maai
 SILTA_WOOCOMMERCE=${SILTA_WOOCOMMERCE:-woocommerce}
 ACF_PRO=acf-pro/plugins/advanced-custom-fields-pro/acf.php
 
-# wp <staging|production> <args...>
+# wp <staging|production> <args...>, in the site's idle CLI container.
 wp() {
 	site=$1
 	shift
-	docker compose --progress quiet run --rm -T "cli-$site" wp "$@"
+	docker compose exec -T "cli-$site" wp "$@"
 }
 
 # The remote issues a one-time pairing string, the initiator adds it as a connection.
@@ -46,6 +46,9 @@ mkdir -p gravityforms/plugins acf-pro/plugins woocommerce/extensions
 gravityforms/install.sh || echo "WARNING: Gravity Forms could not be installed; carrying on without it."
 acf-pro/install.sh || echo "WARNING: ACF Pro could not be installed; carrying on with Secure Custom Fields."
 
+# The CLI containers stay up, and wp() runs each command in them.
+docker compose --progress quiet up -d cli-staging cli-production
+
 # Over TCP: the MariaDB entrypoint's temporary init server only listens on a socket.
 until docker compose exec -T db mariadb -h127.0.0.1 -uwordpress -pwordpress -e 'SELECT 1' production >/dev/null 2>&1; do sleep 2; done
 # The WordPress containers copy core into their volumes and write wp-config.php on first start.
@@ -66,7 +69,7 @@ for site in staging production; do
 	# Fields (the free fork with the same field types). Never both at once.
 	if [ -f "$ACF_PRO" ]; then
 		wp "$site" plugin deactivate secure-custom-fields >/dev/null 2>&1 || true
-		docker compose --progress quiet run --rm -T "cli-$site" sh -c 'rm -rf wp-content/plugins/advanced-custom-fields-pro && cp -R /acf-pro/advanced-custom-fields-pro wp-content/plugins/advanced-custom-fields-pro'
+		docker compose exec -T "cli-$site" sh -c 'rm -rf wp-content/plugins/advanced-custom-fields-pro && cp -R /acf-pro/advanced-custom-fields-pro wp-content/plugins/advanced-custom-fields-pro'
 		wp "$site" plugin activate advanced-custom-fields-pro || echo "WARNING: ACF Pro did not activate on $site."
 	else
 		wp "$site" plugin deactivate advanced-custom-fields-pro >/dev/null 2>&1 || true
@@ -77,7 +80,7 @@ for site in staging production; do
 	fi
 	wp "$site" rewrite structure '/%postname%/'
 	if [ -f gravityforms/plugins/gravityforms/gravityforms.php ]; then
-		docker compose --progress quiet run --rm -T "cli-$site" sh -c 'rm -rf wp-content/plugins/gravityforms && cp -R /gravityforms/gravityforms wp-content/plugins/gravityforms'
+		docker compose exec -T "cli-$site" sh -c 'rm -rf wp-content/plugins/gravityforms && cp -R /gravityforms/gravityforms wp-content/plugins/gravityforms'
 		wp "$site" plugin activate gravityforms || echo "WARNING: Gravity Forms did not activate on $site."
 	fi
 	wp "$site" plugin activate jcore-silta || echo "WARNING: jcore-silta did not activate on $site; carrying on without it."
@@ -159,6 +162,6 @@ Ready.
   Staging:    http://localhost:8090/wp-admin/
   Production: http://localhost:8091/wp-admin/
   Log in as admin / admin (or editor / editor).
-  WP-CLI:     docker compose run --rm cli-staging wp ...
-              docker compose run --rm cli-production wp ...
+  WP-CLI:     docker compose exec cli-staging wp ...
+              docker compose exec cli-production wp ...
 EOF

@@ -4,7 +4,8 @@
 # Gravity Forms and ACF Pro are added when dev/.env has their license keys (see
 # dev/.env.example), paid WooCommerce extensions when their zips are in
 # dev/woocommerce/extensions/.
-# WP-CLI: docker compose run --rm cli-staging wp ... (or cli-production).
+# WP-CLI: docker compose exec cli-staging wp ... (or cli-production) once
+# setup.sh has started them, or docker compose run --rm cli-staging wp ...
 name: jcore-silta-dev
 
 # No WORDPRESS_AUTH_KEY etc.: the image generates random salts per volume, so
@@ -87,10 +88,16 @@ services:
     profiles: [cli]
     user: "33:33"
     depends_on: [db, staging]
-    # Share the site container's network instead of getting one of its own.
-    # setup.sh and the integration tests start hundreds of these; each new
-    # network interface makes Chromium-based browsers on the host abort
-    # requests with ERR_NETWORK_CHANGED. db and the other site still resolve.
+    # Idles, so setup.sh and the integration tests can `docker compose exec`
+    # WP-CLI in it: starting a new container per command cost about two
+    # seconds each, and they run hundreds. `docker compose run --rm` still
+    # works for a one-off command. init makes it stop at once on SIGTERM.
+    command: ["sleep", "infinity"]
+    init: true
+    # Share the site container's network instead of getting one of its own:
+    # each new network interface makes Chromium-based browsers on the host
+    # abort requests with ERR_NETWORK_CHANGED. db and the other site still
+    # resolve.
     network_mode: "service:staging"
     environment:
       <<: *staging-env
@@ -113,10 +120,16 @@ services:
     profiles: [cli]
     user: "33:33"
     depends_on: [db, production]
-    # Share the site container's network instead of getting one of its own.
-    # setup.sh and the integration tests start hundreds of these; each new
-    # network interface makes Chromium-based browsers on the host abort
-    # requests with ERR_NETWORK_CHANGED. db and the other site still resolve.
+    # Idles, so setup.sh and the integration tests can `docker compose exec`
+    # WP-CLI in it: starting a new container per command cost about two
+    # seconds each, and they run hundreds. `docker compose run --rm` still
+    # works for a one-off command. init makes it stop at once on SIGTERM.
+    command: ["sleep", "infinity"]
+    init: true
+    # Share the site container's network instead of getting one of its own:
+    # each new network interface makes Chromium-based browsers on the host
+    # abort requests with ERR_NETWORK_CHANGED. db and the other site still
+    # resolve.
     network_mode: "service:production"
     environment:
       <<: *production-env
