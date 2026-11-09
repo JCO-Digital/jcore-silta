@@ -271,14 +271,89 @@ if [ "$(wp staging eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" =
 	# woo_ext <plugin slug> <name>: staging ID seeded by seed/woocommerce/<plugin slug>.php
 	woo_ext() { printf '%s' "$woo_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )["extensions"][ $argv[1] ][ $argv[2] ] ?? "";' "$1" "$2"; }
 
-	# A simple product is an ordinary post with meta and terms.
-	wp staging silta push "$PROD" --post="$(woo mug)" --yes >/dev/null
+	# woo_seed <group> <name>: staging ID of other seeded content (variations, coupons, terms, attributes)
+	woo_seed() { printf '%s' "$woo_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )[ $argv[1] ][ $argv[2] ] ?? "";' "$1" "$2"; }
+	# files <site> <comma-separated attachment IDs>: their file names, in order
+	files() { wp "$1" eval "foreach ( array_filter( explode( ',', '$2' ) ) as \$i ) { echo basename( get_attached_file( (int) \$i ) ), '|'; }"; }
+	# lookup <site> <product ID> <column>: the product's row in wc_product_meta_lookup
+	lookup() { wp "$1" eval "global \$wpdb; echo \$wpdb->get_var( \$wpdb->prepare( 'SELECT $3 FROM ' . \$wpdb->wc_product_meta_lookup . ' WHERE product_id = %d', $2 ) );"; }
+
+	# A simple product with its images, terms and the category's image.
+	wp staging silta push "$PROD" --post="$(woo mug)" --deep --yes >/dev/null
 	mug=$(post_id production silta-muki product)
 	[ -n "$mug" ] && echo "ok   the simple product was created on production (#$mug)" || { echo "FAIL the simple product is not on production"; failures=$((failures + 1)); }
 	check "SKU" "SILTA-MUKI" "$(wp production post meta get "$mug" _sku)"
 	check "price" "14.90" "$(wp production eval "echo wc_get_product( $mug )->get_price();")"
 	check "product type" "simple" "$(wp production eval "echo wc_get_product( $mug )->get_type();")"
 	check "product category created" "Tarvikkeet" "$(wp production eval "echo implode( ',', wp_get_post_terms( $mug, 'product_cat', array( 'fields' => 'names' ) ) );")"
+	check "gallery (a comma-separated ID list) remapped" "$(files staging "$(wp staging post meta get "$(woo mug)" _product_image_gallery)")" "$(files production "$(wp production post meta get "$mug" _product_image_gallery)")"
+	accessories=$(wp production eval "echo get_term_by( 'slug', 'tarvikkeet', 'product_cat' )->term_id;")
+	check "category image (term meta thumbnail_id) remapped" "$(files staging "$(wp staging term meta get "$(woo_seed terms accessories)" thumbnail_id)")" "$(files production "$(wp production term meta get "$accessories" thumbnail_id)")"
+	check "a new product gets the source's stock" "25" "$(wp production eval "echo wc_get_product( $mug )->get_stock_quantity();")"
+	check "price lookup table filled" "14.9000" "$(lookup production "$mug" max_price)"
+
+	# Stock, sales and ratings are the live store's own.
+	wp production eval "\$p = wc_get_product( $mug ); \$p->set_stock_quantity( 7 ); \$p->set_total_sales( 3 ); \$p->save();" >/dev/null
+	wp staging eval "\$p = wc_get_product( $(woo mug) ); \$p->set_regular_price( '21.90' ); \$p->set_sale_price( '' ); \$p->set_stock_quantity( 30 ); \$p->save();" >/dev/null
+	contains "a sale on production is not a conflict" "update" "$(wp staging silta push "$PROD" --post="$(woo mug)" --no-dependencies --dry-run | grep "post:$(woo mug)")"
+	wp staging silta push "$PROD" --post="$(woo mug)" --no-dependencies --yes >/dev/null
+	check "regular price updated" "21.90" "$(wp production eval "echo wc_get_product( $mug )->get_regular_price();")"
+	check "active price recalculated on production" "21.90" "$(wp production eval "echo wc_get_product( $mug )->get_price();")"
+	check "price lookup refreshed" "21.9000" "$(lookup production "$mug" max_price)"
+	check "production keeps its stock" "7" "$(wp production eval "echo wc_get_product( $mug )->get_stock_quantity();")"
+	check "production keeps its sales count" "3" "$(wp production eval "echo wc_get_product( $mug )->get_total_sales();")"
+
+	# Upsells and cross-sells (serialized ID lists).
+	wp staging silta push "$PROD" --post="$(woo poster)" --yes >/dev/null
+	poster=$(post_id production silta-juliste product)
+	check "upsell remapped" "$mug" "$(wp production eval "echo implode( ',', wc_get_product( $poster )->get_upsell_ids() );")"
+	check "cross-sell remapped" "$mug" "$(wp production eval "echo implode( ',', wc_get_product( $poster )->get_cross_sell_ids() );")"
+
+	# A grouped product's children (a serialized ID list) and its derived price.
+	wp staging silta push "$PROD" --post="$(woo gift_set)" --yes >/dev/null
+	gift_set=$(post_id production silta-lahjasetti product)
+	check "grouped children remapped" "$mug,$poster" "$(wp production eval "echo implode( ',', wc_get_product( $gift_set )->get_children() );")"
+	check "grouped price synced from its children" "21.90" "$(wp production eval "echo wc_get_product( $gift_set )->get_price();")"
+
+	# A variable product brings its variations; matching keeps them on a re-push.
+	wp staging silta push "$PROD" --post="$(woo shirt)" --yes >/dev/null
+	shirt=$(post_id production silta-paita product)
+	variations="foreach ( wc_get_product( $shirt )->get_children() as \$v ) { \$v = wc_get_product( \$v ); echo \$v->get_sku(), '=', \$v->get_attribute( 'pa_vari' ), '=', \$v->get_regular_price(), '=', \$v->get_stock_quantity(), '|'; }"
+	check "variations created with their attributes, prices and stock" "SILTA-PAITA-PUN=Punainen=24.90=10|SILTA-PAITA-SIN=Sininen=26.90=4|" "$(wp production eval "$variations")"
+	check "variable price synced from the variations" "24.90-26.90" "$(wp production eval "\$p = wc_get_product( $shirt ); echo \$p->get_variation_price( 'min' ), '-', \$p->get_variation_price( 'max' );")"
+	check "variable price lookup" "24.9000-26.9000" "$(lookup production "$shirt" min_price)-$(lookup production "$shirt" max_price)"
+	blue=$(wp production eval "echo wc_get_product_id_by_sku( 'SILTA-PAITA-SIN' );")
+	check "variation image arrived" "$(files staging "$(wp staging post meta get "$(woo_seed variations blue)" _thumbnail_id)")" "$(files production "$(wp production post meta get "$blue" _thumbnail_id)")"
+	check "custom attribute kept" "Luomupuuvilla" "$(wp production eval "echo wc_get_product( $shirt )->get_attribute( 'Materiaali' );")"
+	wp staging silta push "$PROD" --post="$(woo shirt)" --yes >/dev/null
+	check "a re-push matches the variations instead of adding more" "2" "$(wp production eval "echo count( wc_get_product( $shirt )->get_children() );")"
+
+	# A variation removed on staging is trashed with its product, and undo brings it back.
+	wp staging post delete "$(woo_seed variations blue)" --force >/dev/null
+	wp staging eval "WC_Product_Variable::sync( $(woo shirt) );" >/dev/null
+	contains "the removed variation is offered for the trash" "orphan:$blue" "$(wp staging silta push "$PROD" --post="$(woo shirt)" --dry-run)"
+	wp staging silta push "$PROD" --post="$(woo shirt)" --yes >/dev/null
+	check "the removed variation is trashed" "trash" "$(wp production post get "$blue" --field=post_status)"
+	check "the product's price follows" "24.90" "$(wp production eval "echo wc_get_product( $shirt )->get_variation_price( 'max' );")"
+	wp staging silta undo "$(last_job)" --yes >/dev/null
+	check "undo restores the variation" "publish" "$(wp production post get "$blue" --field=post_status)"
+	check "and the product's price" "26.90" "$(wp production eval "echo wc_get_product( $shirt )->get_variation_price( 'max' );")"
+
+	# A global attribute production doesn't have is created there.
+	check "production has no Koko attribute yet" "0" "$(wp production eval "echo wc_attribute_taxonomy_id_by_name( 'pa_koko' );")"
+	contains "the plan says the attribute will be created" "pa_koko" "$(wp staging silta push "$PROD" --post="$(woo beanie)" --dry-run)"
+	wp staging silta push "$PROD" --post="$(woo beanie)" --yes >/dev/null
+	beanie=$(post_id production silta-pipo product)
+	check "attribute created" "Koko" "$(wp production eval "echo wc_get_attribute( wc_attribute_taxonomy_id_by_name( 'pa_koko' ) )->name;")"
+	check "with the product's terms" "$(wp staging eval "echo wc_get_product( $(woo beanie) )->get_attribute( 'pa_koko' );")" "$(wp production eval "echo wc_get_product( $beanie )->get_attribute( 'pa_koko' );")"
+
+	# A coupon's product list (comma-separated) is remapped; usage isn't synced.
+	coupon=$(woo_seed coupons silta10)
+	wp staging post meta update "$coupon" usage_count 5 >/dev/null
+	wp staging silta push "$PROD" --post="$coupon" --yes >/dev/null
+	pcoupon=$(wp production eval "echo wc_get_coupon_id_by_code( 'silta10' );")
+	check "coupon product IDs remapped" "$mug,$shirt" "$(wp production post meta get "$pcoupon" product_ids)"
+	check "coupon usage is not synced" "0" "$(wp production eval "echo ( new WC_Coupon( $pcoupon ) )->get_usage_count();")"
 
 	# Paid extensions: one block each, skipped unless the plugin is active on
 	# both sites (its zip is in dev/woocommerce/extensions/).
