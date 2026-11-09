@@ -249,7 +249,21 @@ final class Exporter {
 			list( $state['meta_groups'], $state['group_labels'] ) = $this->groups( $state['meta'] );
 		}
 
-		return $state;
+		/**
+		 * Filters an exported object. Integrations add what the target needs
+		 * beyond the object's own state, neither of which is part of its hash:
+		 *
+		 * - `companions`: post type => IDs of posts that always travel with
+		 *   this one, such as a variable product's variations. The job adds
+		 *   them next to it, and offers the target's children of that type
+		 *   that came from this site but are no longer listed as orphans.
+		 * - `extra`: data of the integration's own, keyed by its name.
+		 *
+		 * @param array<string, mixed> $state Exported object.
+		 * @param string               $type  post, term, menu or form.
+		 * @param int                  $id    Object ID.
+		 */
+		return (array) apply_filters( 'jcore_silta_export_object', $state, $type, $id );
 	}
 
 	/**

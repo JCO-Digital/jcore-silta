@@ -134,6 +134,15 @@ final class Planner {
 		$incoming        = $this->ctx->transform( $record );
 		$plan['missing'] = $this->missing( (array) $incoming['unresolved'] );
 
+		/**
+		 * Filters notes shown with an object's plan: what the sync will do on
+		 * this site beyond writing the object (e.g. create a product attribute).
+		 *
+		 * @param string[]             $notes  Notes.
+		 * @param array<string, mixed> $record Incoming object.
+		 */
+		$plan['notes'] = array_values( array_filter( (array) apply_filters( 'jcore_silta_plan_notes', array(), $record ), 'is_string' ) );
+
 		if ( 'term' === $record['type'] ) {
 			$plan['action'] = null === $match ? 'create' : 'match';
 
@@ -158,9 +167,43 @@ final class Planner {
 			if ( 'update' === $plan['action'] ) {
 				$plan['conflict'] = $this->ctx->conflict( $record, (int) $match['id'], $local );
 			}
+			if ( 'post' === $record['type'] ) {
+				$plan['orphans'] = $this->companion_orphans( $record, (int) $match['id'] );
+			}
 		}
 
 		return $plan;
+	}
+
+	/**
+	 * Lists the local post's companions (a product's variations) that came
+	 * from the source but that the source no longer lists.
+	 *
+	 * @param array<string, mixed> $record   Incoming post.
+	 * @param int                  $local_id Local post ID.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function companion_orphans( array $record, int $local_id ): array {
+		$orphans = array();
+		foreach ( (array) ( $record['companions'] ?? array() ) as $post_type => $ids ) {
+			$present = array_flip( array_map( 'intval', (array) $ids ) );
+			foreach ( Mapping::children_of( $this->ctx->site, $local_id, (string) $post_type ) as $remote_id => $child ) {
+				if ( isset( $present[ $remote_id ] ) ) {
+					continue;
+				}
+				$post      = get_post( $child );
+				$orphans[] = array(
+					'id'        => $child,
+					'remote_id' => $remote_id,
+					'post_type' => (string) $post_type,
+					'title'     => $post instanceof \WP_Post ? $post->post_title : '#' . $child,
+					'status'    => $post instanceof \WP_Post ? $post->post_status : '',
+				);
+			}
+		}
+
+		return $orphans;
 	}
 
 	/**

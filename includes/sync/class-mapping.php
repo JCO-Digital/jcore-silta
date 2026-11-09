@@ -261,6 +261,39 @@ final class Mapping {
 	}
 
 	/**
+	 * Returns a local post's children of a post type that are mapped from a
+	 * site, keyed by remote ID. Used to find companions the source removed.
+	 *
+	 * @param string $site      Remote site UUID.
+	 * @param int    $parent_id Local parent ID.
+	 * @param string $post_type Post type of the children.
+	 *
+	 * @return array<int, int> Remote ID => local ID.
+	 */
+	public static function children_of( string $site, int $parent_id, string $post_type ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare(
+				"SELECT m.remote_id, m.local_id FROM %i m INNER JOIN %i p ON p.ID = m.local_id WHERE m.site = %s AND m.object_type = 'post' AND p.post_parent = %d AND p.post_type = %s AND p.post_status NOT IN ('trash', 'auto-draft')",
+				Database::table( 'map' ),
+				$wpdb->posts,
+				$site,
+				$parent_id,
+				$post_type
+			),
+			ARRAY_A
+		);
+
+		$map = array();
+		foreach ( (array) $rows as $row ) {
+			$map[ (int) $row['remote_id'] ] = (int) $row['local_id'];
+		}
+
+		return $map;
+	}
+
+	/**
 	 * Decodes a row's columns.
 	 *
 	 * @param array<string, mixed> $row Raw row.

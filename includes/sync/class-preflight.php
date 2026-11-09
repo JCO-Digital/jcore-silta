@@ -26,12 +26,21 @@ final class Preflight {
 	 * @return array<string, string>
 	 */
 	public static function check( array $record ): array {
-		return match ( $record['type'] ?? '' ) {
+		$errors = match ( $record['type'] ?? '' ) {
 			'post' => self::post( $record ),
 			'term' => self::term( $record ),
 			'form' => self::form( $record ),
 			default => array(),
 		};
+
+		/**
+		 * Filters what keeps an incoming object, or sections of it, from
+		 * syncing. Runs while planning and again before writing.
+		 *
+		 * @param array<string, string> $errors Errors by section; the empty key blocks the whole object.
+		 * @param array<string, mixed>  $record Incoming object.
+		 */
+		return (array) apply_filters( 'jcore_silta_preflight', $errors, $record );
 	}
 
 	/**

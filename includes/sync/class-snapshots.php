@@ -138,6 +138,8 @@ final class Snapshots {
 		);
 
 		$kses = Importer::kses_off();
+		/** This action is documented in includes/sync/class-importer.php */
+		do_action( 'jcore_silta_writes_start', array() );
 		foreach ( (array) $rows as $row ) {
 			$data = Util::decode( $row['data'] );
 			$id   = (int) $row['local_id'];
@@ -169,6 +171,8 @@ final class Snapshots {
 				$summary['errors'][] = sprintf( '%s #%d: %s', $row['object_type'], $id, $e->getMessage() );
 			}
 		}
+		/** This action is documented in includes/sync/class-importer.php */
+		do_action( 'jcore_silta_writes_done' );
 		if ( $kses ) {
 			kses_init_filters();
 		}

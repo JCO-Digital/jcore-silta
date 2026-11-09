@@ -95,7 +95,16 @@ final class State {
 			$state['file']                     = Media::describe( $id, $hashes );
 		}
 
-		return $state;
+		/**
+		 * Filters a post's state, as both sites read it to export, compare,
+		 * hash and snapshot. Data a site derives or collects for itself (a
+		 * shop's stock and sales) can be left out here, so it is never
+		 * overwritten and never counts as a change.
+		 *
+		 * @param array<string, mixed> $state State.
+		 * @param \WP_Post             $post  Post.
+		 */
+		return (array) apply_filters( 'jcore_silta_post_state', $state, $post );
 	}
 
 	/**
@@ -178,7 +187,7 @@ final class State {
 	 */
 	public static function hash( array $state ): string {
 		$parts = $state;
-		unset( $parts['id'], $parts['key'], $parts['guid'], $parts['modified_gmt'], $parts['refs'], $parts['origins'], $parts['hash'], $parts['title'], $parts['meta_groups'], $parts['group_labels'], $parts['unresolved'], $parts['depth'] );
+		unset( $parts['id'], $parts['key'], $parts['guid'], $parts['modified_gmt'], $parts['refs'], $parts['origins'], $parts['hash'], $parts['title'], $parts['meta_groups'], $parts['group_labels'], $parts['unresolved'], $parts['depth'], $parts['companions'], $parts['extra'] );
 
 		if ( isset( $parts['meta'] ) && is_array( $parts['meta'] ) ) {
 			ksort( $parts['meta'] );

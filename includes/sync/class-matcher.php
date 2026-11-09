@@ -134,7 +134,16 @@ final class Matcher {
 		}
 
 		$slug = (string) ( $record['fields']['post_name'] ?? $record['post_name'] ?? '' );
-		if ( '' === $slug ) {
+
+		/**
+		 * Filters whether posts of a type may be matched by slug. Types whose
+		 * slugs are generated and repeat across parents (product variations)
+		 * match through `jcore_silta_match_post` instead.
+		 *
+		 * @param bool   $by_slug   Whether to match by slug.
+		 * @param string $post_type Post type.
+		 */
+		if ( '' === $slug || ! apply_filters( 'jcore_silta_match_by_slug', true, $post_type ) ) {
 			return null;
 		}
 
@@ -398,7 +407,7 @@ final class Matcher {
 	 *
 	 * @return bool
 	 */
-	private function free( string $type, int $local_id, int $remote_id ): bool {
+	public function free( string $type, int $local_id, int $remote_id ): bool {
 		$mapped = Mapping::remote_for( $this->site, $type, $local_id );
 
 		return null === $mapped || $mapped === $remote_id;
