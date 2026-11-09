@@ -51,6 +51,17 @@ final class ValuesTest extends TestCase {
 		$this->assertSame( 'https://x', Values::map_raw( 'https://x', 'post', $this->visitor() ) );
 	}
 
+	public function test_raw_comma_list(): void {
+		$this->assertSame( '101,102,103', Values::map_raw( '1,2,3', 'post', $this->visitor() ) );
+		$this->assertSame( '101, 102', Values::map_raw( '1, 2', 'post', $this->visitor() ), 'Separators stay when every ID resolves.' );
+		$this->assertSame( '101,103', Values::map_raw( '1, 42 ,3', 'post', $this->visitor() ), 'A dropped ID leaves the list.' );
+		$this->assertSame( '', Values::map_raw( '42,43', 'post', $this->visitor() ) );
+		$this->assertSame( '0,101', Values::map_raw( '0,1', 'post', $this->visitor() ) );
+		foreach ( array( '1,', ',1', '1,,2', '1,a', '1;2', '1.5' ) as $text ) {
+			$this->assertSame( $text, Values::map_raw( $text, 'post', $this->visitor() ), $text );
+		}
+	}
+
 	public function test_raw_serialized_list_keeps_types_and_drops_unresolved(): void {
 		$raw = serialize( array( '3', 4, '42' ) );
 

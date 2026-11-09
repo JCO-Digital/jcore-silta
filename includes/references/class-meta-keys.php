@@ -90,7 +90,8 @@ final class Meta_Keys {
 		 * Filters the meta keys that hold object IDs.
 		 *
 		 * Keys are meta keys (a trailing * matches a prefix); values are post,
-		 * term or user. The value may be a single ID or a serialized list.
+		 * term or user. The value may be a single ID, a list of IDs separated
+		 * by commas ("12,34"), or a serialized list.
 		 * Example: `$keys['_jco_related_post'] = 'post';`
 		 *
 		 * @param array<string, string> $keys Meta keys and kinds.
