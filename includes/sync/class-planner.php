@@ -134,16 +134,8 @@ final class Planner {
 		$incoming        = $this->ctx->transform( $record );
 		$plan['missing'] = $this->missing( (array) $incoming['unresolved'] );
 
-		/**
-		 * Filters notes shown with an object's plan: what the sync will do on
-		 * this site beyond writing the object (e.g. create a product attribute).
-		 *
-		 * @param string[]             $notes  Notes.
-		 * @param array<string, mixed> $record Incoming object.
-		 */
-		$plan['notes'] = array_values( array_filter( (array) apply_filters( 'jcore_silta_plan_notes', array(), $record ), 'is_string' ) );
-
 		if ( 'term' === $record['type'] ) {
+			$plan['notes']  = self::notes( $record, $incoming, null );
 			$plan['action'] = null === $match ? 'create' : 'match';
 
 			return $plan;
@@ -153,6 +145,7 @@ final class Planner {
 		if ( 'post' === $record['type'] ) {
 			$incoming['fields']['post_status'] = $this->ctx->status( $incoming, $local );
 		}
+		$plan['notes'] = self::notes( $record, $incoming, $local );
 
 		$sections = Differ::sections( $incoming, $local );
 		foreach ( $sections as $section => $info ) {
@@ -173,6 +166,28 @@ final class Planner {
 		}
 
 		return $plan;
+	}
+
+	/**
+	 * Returns the notes shown with an object's plan.
+	 *
+	 * @param array<string, mixed>      $record   Incoming object, as exported.
+	 * @param array<string, mixed>      $incoming Incoming object with local IDs.
+	 * @param array<string, mixed>|null $local    Local copy, if any (never for terms).
+	 *
+	 * @return string[]
+	 */
+	private static function notes( array $record, array $incoming, ?array $local ): array {
+		/**
+		 * Filters notes shown with an object's plan: what the sync will do on
+		 * this site beyond writing the object (e.g. create a product attribute).
+		 *
+		 * @param string[]                  $notes    Notes.
+		 * @param array<string, mixed>      $record   Incoming object, as exported.
+		 * @param array<string, mixed>      $incoming Incoming object with local IDs.
+		 * @param array<string, mixed>|null $local    Local copy, if any (never for terms).
+		 */
+		return array_values( array_filter( (array) apply_filters( 'jcore_silta_plan_notes', array(), $record, $incoming, $local ), 'is_string' ) );
 	}
 
 	/**

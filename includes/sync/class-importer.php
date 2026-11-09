@@ -237,8 +237,12 @@ final class Importer {
 		 * @param array<string, mixed> $incoming State written, with local IDs.
 		 * @param bool                 $created  Whether the post was just created.
 		 * @param bool                 $restore  Whether this restored a snapshot.
+		 * @param callable             $wants    Whether a section is to be written:
+		 *                                       ( string $section ): bool. Sections an
+		 *                                       integration adds through
+		 *                                       jcore_silta_post_sections are its to write.
 		 */
-		do_action( 'jcore_silta_post_written', $id, $incoming, null === $local, $restore );
+		do_action( 'jcore_silta_post_written', $id, $incoming, null === $local, $restore, $wants );
 
 		return true;
 	}

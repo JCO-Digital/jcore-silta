@@ -19,7 +19,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * `terms.<taxonomy>`, `language`, `file` (attachments); for menus,
  * `fields.name`, `items` and `locations`; for Gravity Forms forms,
  * `fields.title`, `fields.active`, `settings`, `form_fields`,
- * `confirmations` and `notifications`.
+ * `confirmations` and `notifications`. Integrations add post sections of
+ * their own through `jcore_silta_post_sections`.
  */
 final class Differ {
 
@@ -263,7 +264,18 @@ final class Differ {
 			);
 		}
 
-		return $parts;
+		/**
+		 * Filters the diff sections of a post, so an integration can offer
+		 * data of its own (a product bundle's items) as a section. Runs for
+		 * the incoming post and for its local copy; a section only one of them
+		 * has counts as changed. The importer passes whether a section is
+		 * wanted to jcore_silta_post_written, where the integration writes it.
+		 *
+		 * @param array<string, array{label: string, group: string, value: mixed, display: string, text: bool}> $parts    Sections by name.
+		 * @param array<string, mixed>                                                                          $state    Post state split.
+		 * @param array<string, mixed>                                                                          $incoming Incoming post.
+		 */
+		return (array) apply_filters( 'jcore_silta_post_sections', $parts, $state, $incoming );
 	}
 
 	/**
