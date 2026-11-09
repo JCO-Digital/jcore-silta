@@ -37,6 +37,14 @@ final class Content {
 		'acf-post-type',
 		'acf-taxonomy',
 		'acf-ui-options-page',
+		// WooCommerce orders and refunds (on legacy post storage, and the
+		// placeholders HPOS keeps in the posts table), subscriptions and push
+		// notification tokens: personal data that belongs to the site that has it.
+		'shop_order',
+		'shop_order_refund',
+		'shop_order_placehold',
+		'shop_subscription',
+		'wc_push_token',
 	);
 
 	/**
