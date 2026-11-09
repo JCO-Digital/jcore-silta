@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.4.3
+Stable tag: 0.4.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -105,7 +105,12 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.4.3 (2026-11-09) =
+= 0.4.4 (2026-11-09) =
+
+* Performance: dev - run WP-CLI in idle CLI containers instead of one per command
+* CI: integration - cancel a run when a newer commit lands on the same ref
+
+= v0.4.3 (2026-11-09) =
 
 * Fix: dev - run the CLI containers in their site's network namespace
 * Fix: declare Tested up to only in readme.txt
