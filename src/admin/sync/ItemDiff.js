@@ -29,6 +29,27 @@ const groups = () => [
 ];
 
 /**
+ * Section groups to show: the known ones in their order, then any an
+ * integration adds (a product bundle's items), labelled by their first
+ * section.
+ *
+ * @param {Object} sections Sections by key.
+ * @return {Array} [ group, label ] pairs.
+ */
+const sectionGroups = ( sections ) => {
+	const known = groups();
+	const names = known.map( ( [ group ] ) => group );
+	const extra = [];
+	Object.values( sections ).forEach( ( section ) => {
+		if ( ! names.includes( section.group ) ) {
+			names.push( section.group );
+			extra.push( [ section.group, section.label ] );
+		}
+	} );
+	return [ ...known, ...extra ];
+};
+
+/**
  * The section-by-section diff of one item, with a checkbox per changed section.
  *
  * @param {Object}                       props             Props.
@@ -94,7 +115,7 @@ export default function ItemDiff( { jobId, item, targetLabel, onPatch } ) {
 				checked={ showUnchanged }
 				onChange={ setShowUnchanged }
 			/>
-			{ groups().map( ( [ group, label ] ) => {
+			{ sectionGroups( sections ).map( ( [ group, label ] ) => {
 				const keys = allKeys.filter(
 					( key ) => sections[ key ].group === group && visible( key )
 				);
