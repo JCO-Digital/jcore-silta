@@ -42,10 +42,13 @@ final class Differ {
 
 		$sections = array();
 		foreach ( $theirs + $ours as $key => $part ) {
+			if ( self::local_only( $theirs, $key, $part ) ) {
+				continue;
+			}
 			$sections[ $key ] = array(
 				'label'   => $part['label'],
 				'group'   => $part['group'],
-				'changed' => ( $theirs[ $key ]['value'] ?? null ) !== ( $ours[ $key ]['value'] ?? null ),
+				'changed' => self::value( $theirs, $key, $part ) !== self::value( $ours, $key, $part ),
 			);
 		}
 
@@ -66,9 +69,12 @@ final class Differ {
 
 		$details = array();
 		foreach ( $theirs + $ours as $key => $part ) {
-			$before  = $ours[ $key ]['display'] ?? '';
-			$after   = $theirs[ $key ]['display'] ?? '';
-			$changed = ( $theirs[ $key ]['value'] ?? null ) !== ( $ours[ $key ]['value'] ?? null );
+			if ( self::local_only( $theirs, $key, $part ) ) {
+				continue;
+			}
+			$before  = $ours[ $key ]['display'] ?? self::missing_display( $part );
+			$after   = $theirs[ $key ]['display'] ?? self::missing_display( $part );
+			$changed = self::value( $theirs, $key, $part ) !== self::value( $ours, $key, $part );
 
 			$details[ $key ] = array(
 				'label'   => $part['label'],
@@ -81,6 +87,51 @@ final class Differ {
 		}
 
 		return $details;
+	}
+
+	/**
+	 * Returns a section's comparable value on one side. A taxonomy this site
+	 * doesn't have counts as one with no terms, so it differs only when the
+	 * source has terms in it.
+	 *
+	 * @param array<string, array<string, mixed>> $parts Sections of one side.
+	 * @param string                              $key   Section key.
+	 * @param array<string, mixed>                $part  The section, from either side.
+	 *
+	 * @return mixed
+	 */
+	private static function value( array $parts, string $key, array $part ): mixed {
+		if ( isset( $parts[ $key ] ) ) {
+			return $parts[ $key ]['value'];
+		}
+
+		return 'terms' === $part['group'] ? array() : null;
+	}
+
+	/**
+	 * Says whether a section is a taxonomy only this site has. The source
+	 * sends every taxonomy it has for the post type, and a sync writes only
+	 * those, so terms in any other taxonomy here are left alone.
+	 *
+	 * @param array<string, array<string, mixed>> $theirs Incoming sections.
+	 * @param string                              $key    Section key.
+	 * @param array<string, mixed>                $part   The section.
+	 *
+	 * @return bool
+	 */
+	private static function local_only( array $theirs, string $key, array $part ): bool {
+		return 'terms' === $part['group'] && ! isset( $theirs[ $key ] );
+	}
+
+	/**
+	 * Returns the display of a section one side doesn't have.
+	 *
+	 * @param array<string, mixed> $part The section, from the other side.
+	 *
+	 * @return string
+	 */
+	private static function missing_display( array $part ): string {
+		return 'terms' === $part['group'] ? self::display_terms( array() ) : '';
 	}
 
 	/**

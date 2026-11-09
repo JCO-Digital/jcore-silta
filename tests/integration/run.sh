@@ -291,6 +291,8 @@ if [ "$(wp staging eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" =
 	check "category image (term meta thumbnail_id) remapped" "$(files staging "$(wp staging term meta get "$(woo_seed terms accessories)" thumbnail_id)")" "$(files production "$(wp production term meta get "$accessories" thumbnail_id)")"
 	check "a new product gets the source's stock" "25" "$(wp production eval "echo wc_get_product( $mug )->get_stock_quantity();")"
 	check "price lookup table filled" "14.9000" "$(lookup production "$mug" max_price)"
+	# pa_koko exists only on staging: its empty term set is no difference.
+	contains "pushing it again changes nothing" "unchanged" "$(wp staging silta push "$PROD" --post="$(woo mug)" --no-dependencies --dry-run | grep "post:$(woo mug)")"
 
 	# Stock, sales and ratings are the live store's own.
 	wp production eval "\$p = wc_get_product( $mug ); \$p->set_stock_quantity( 7 ); \$p->set_total_sales( 3 ); \$p->save();" >/dev/null
@@ -346,6 +348,11 @@ if [ "$(wp staging eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" =
 	beanie=$(post_id production silta-pipo product)
 	check "attribute created" "Koko" "$(wp production eval "echo wc_get_attribute( wc_attribute_taxonomy_id_by_name( 'pa_koko' ) )->name;")"
 	check "with the product's terms" "$(wp staging eval "echo wc_get_product( $(woo beanie) )->get_attribute( 'pa_koko' );")" "$(wp production eval "echo wc_get_product( $beanie )->get_attribute( 'pa_koko' );")"
+	# The new taxonomy gives earlier products an empty term set on production,
+	# which must not read as a change made there.
+	mug_plan=$(wp staging silta push "$PROD" --post="$(woo mug)" --no-dependencies --dry-run | grep "post:$(woo mug)")
+	contains "a product synced before the attribute existed is still unchanged" "unchanged" "$mug_plan"
+	check "and is not a conflict" "" "$(echo "$mug_plan" | grep -o modified)"
 
 	# A coupon's product list (comma-separated) is remapped; usage isn't synced.
 	coupon=$(woo_seed coupons silta10)

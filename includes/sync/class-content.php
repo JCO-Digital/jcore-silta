@@ -193,8 +193,9 @@ final class Content {
 				'link'         => 'attachment' === $post->post_type ? (string) wp_get_attachment_url( $post->ID ) : (string) get_permalink( $post ),
 			);
 			if ( ! empty( $args['hashes'] ) ) {
-				$state        = State::post( $post->ID );
-				$item['hash'] = null === $state ? '' : State::hash( $state );
+				$state               = State::post( $post->ID );
+				$item['hash']        = null === $state ? '' : State::hash( $state );
+				$item['legacy_hash'] = null === $state ? '' : State::legacy_hash( $state );
 			}
 			$items[] = $item;
 		}

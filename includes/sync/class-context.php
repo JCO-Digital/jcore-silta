@@ -636,7 +636,7 @@ final class Context {
 		$row = Mapping::get( $this->site, Mapping::type_for( (string) $record['type'] ), (int) $record['id'] );
 
 		if ( null !== $row && (int) $row['local_id'] === $local_id && '' !== $row['local_hash'] ) {
-			return $row['local_hash'] !== State::hash( $local ) ? 'modified' : null;
+			return State::hash_matches( (string) $row['local_hash'], $local ) ? null : 'modified';
 		}
 
 		$theirs = (string) ( $record['modified_gmt'] ?? '' );
