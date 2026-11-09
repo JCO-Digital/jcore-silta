@@ -197,10 +197,15 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_media_max_files`, `_media_max_bytes`, `_media_max_open_transfers` | filter | Media transfer limits (256 files, 5 GB, 10,000 open per site) |
 | `jcore_silta_remote_url` | filter | Rewrite the URL of a request to a remote (the dev stack maps localhost ports to container names) |
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
+| `jcore_silta_post_state`, `_export_object`, `_walk_post`, `_post_sections`, `_match_post`, `_match_by_slug`, `_preflight`, `_plan_notes` | filter | Integration hooks: what a post's state holds, what an export carries beyond it (`companions`, `extra`), the IDs in an integration's own data, extra diff sections, extra matching steps, problems and plan notes (see the docblocks where they are applied) |
+| `jcore_silta_writes_start`, `_post_written`, `_writes_done` | action | Integration hooks around a batch of writes (an import or an undo); `jcore_silta_post_written` gets whether each section is to be written |
+| `jcore_silta_woocommerce_sync_price`, `_woocommerce_visibility_terms` | filter | Let a product type of an extension take over its price in the WooCommerce refresh, and add to its visibility terms |
 
 ACF fields (image, file, gallery, post object, relationship, page link, taxonomy, user, the "ACF: Gravity Forms" `forms` field, also inside repeaters, flexible content, groups, clones and ACF blocks), core blocks, featured images, parents, terms, Polylang translations, menu items, the Yoast / Rank Math / SEOPress image and primary-term keys, and Gravity Forms embeds (the `gravityforms/form` block, the `[gravityform]` shortcode in content and plain-text meta, and confirmation pages) are handled without configuration.
 
 [jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) global content is supported by `Integrations\Maailma`: it declares the `jco/global-content` block's `selectedPostId` and `selectedSlug` through `jcore_silta_block_references`, and keeps Maailma from renaming a global content post's slug after its title while Silta writes the post (`Sync\Importer::writing()`).
+
+WooCommerce Product Bundles is supported by `Integrations\WooCommerce_Product_Bundles`: a bundle's items (kept in the extension's own tables) travel in its state, their products and allowed variations are dependencies and are remapped, and they are written through the extension's CRUD. See [docs/design.md](docs/design.md#woocommerce-product-bundles).
 
 Gravity Forms embeds are handled by `Integrations\Gravity_Forms`: it declares the `gravityforms/form` block's `formId` through `jcore_silta_block_references`, and remaps the `[gravityform]` shortcode in content and plain-text meta and the pages confirmations redirect to. The forms themselves are a sync kind of their own (`Sync\Gravity_Forms`, through GFAPI).
 
