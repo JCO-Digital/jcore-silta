@@ -369,7 +369,49 @@ if [ "$(wp staging eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" =
 		bundle=$(woo_ext woocommerce-product-bundles bundle)
 		check "the bundle is seeded on staging" "bundle" "$(wp staging eval "echo wc_get_product( $bundle )->get_type();")"
 		check "with its items and their settings" "1-1-no|1-2-yes|" "$(wp staging eval "foreach ( wc_get_product( $bundle )->get_bundled_items() as \$i ) { echo \$i->get_quantity( 'min' ), '-', \$i->get_quantity( 'max' ), '-', \$i->is_optional() ? 'yes' : 'no', '|'; }")"
-		# Syncing bundles isn't supported yet; its checks go here.
+
+		# A target without the extension refuses a bundle instead of creating an empty product.
+		wp production plugin deactivate woocommerce-product-bundles >/dev/null
+		contains "a target without Product Bundles refuses the bundle" "WooCommerce Product Bundles is not active here" "$(wp staging silta push "$PROD" --post="$bundle" --dry-run)"
+		wp production plugin activate woocommerce-product-bundles >/dev/null
+		check "and nothing was created" "" "$(post_id production silta-paketti product)"
+
+		# The bundle's items point at production's products and variations.
+		wp staging silta push "$PROD" --post="$bundle" --yes >/dev/null
+		pbundle=$(post_id production silta-paketti product)
+		red=$(wp production eval "echo wc_get_product_id_by_sku( 'SILTA-PAITA-PUN' );")
+		# bundle_items <site> <bundle ID>: product=allowed variations, per item
+		bundle_items() { wp "$1" eval "foreach ( wc_get_product( $2 )->get_bundled_data_items( 'edit' ) as \$i ) { echo \$i->get_product_id(), '=', implode( ',', (array) \$i->get_meta( 'allowed_variations' ) ), '|'; }"; }
+		bundle_settings() { wp "$1" eval "foreach ( wc_get_product( $2 )->get_bundled_items() as \$i ) { echo \$i->get_quantity( 'min' ), '-', \$i->get_quantity( 'max' ), '-', \$i->is_optional() ? 'yes' : 'no', '|'; }"; }
+		bundle_ids() { wp production eval "foreach ( wc_get_product( $1 )->get_bundled_data_items( 'edit' ) as \$i ) { echo \$i->get_id(), '|'; }"; }
+		bundle_price() { wp "$1" eval "echo wc_get_product( $2 )->get_price(), '-', get_post_meta( $2, '_wc_sw_max_price', true );"; }
+		check "the bundle was created as a bundle" "bundle" "$(wp production eval "echo wc_get_product( $pbundle )->get_type();")"
+		check "its items point at production's mug and shirt, and the shirt's allowed variation" "$mug=|$shirt=$red|" "$(bundle_items production "$pbundle")"
+		check "the items' settings" "1-1-no|1-2-yes|" "$(bundle_settings production "$pbundle")"
+		check "priced individually, discount and default variation" "no-yes-10-punainen" "$(wp production eval "\$d = wc_get_product( $pbundle )->get_bundled_data_items( 'edit' ); echo \$d[0]->get_meta( 'priced_individually' ), '-', \$d[1]->get_meta( 'priced_individually' ), '-', \$d[1]->get_meta( 'discount' ), '-', \$d[1]->get_meta( 'default_variation_attributes' )['pa_vari'];")"
+		check "the price from its items, as on staging" "39-83.82" "$(bundle_price production "$pbundle")"
+		check "staging has the same price" "$(bundle_price staging "$bundle")" "$(bundle_price production "$pbundle")"
+		check "price lookup table" "39.0000-83.8200" "$(lookup production "$pbundle" min_price)-$(lookup production "$pbundle" max_price)"
+
+		# A second push matches the items instead of adding more.
+		ids=$(bundle_ids "$pbundle")
+		contains "pushing the bundle again changes nothing" "unchanged" "$(wp staging silta push "$PROD" --post="$bundle" --dry-run | grep "post:$bundle")"
+		wp staging eval "\$b = wc_get_product( $bundle ); \$d = array(); foreach ( \$b->get_bundled_data_items( 'edit' ) as \$i ) { \$x = \$i->get_data(); if ( $(woo shirt) === \$x['product_id'] ) { \$x['meta_data']['quantity_max'] = 3; } \$d[] = \$x; } \$b->set_bundled_data_items( \$d ); \$b->save();" >/dev/null
+		contains "a changed item setting is an update of the items" "bundled_items" "$(wp staging silta push "$PROD" --post="$bundle" --dry-run | grep "post:$bundle")"
+		wp staging silta push "$PROD" --post="$bundle" --yes >/dev/null
+		check "a re-push updates the items in place" "$ids" "$(bundle_ids "$pbundle")"
+		check "with the changed setting" "1-1-no|1-3-yes|" "$(bundle_settings production "$pbundle")"
+		check "and the price follows" "39-106.23" "$(bundle_price production "$pbundle")"
+
+		# An item removed on staging is removed on production too, and undo puts it back.
+		wp staging eval "\$b = wc_get_product( $bundle ); \$d = array(); foreach ( \$b->get_bundled_data_items( 'edit' ) as \$i ) { if ( $(woo mug) !== \$i->get_product_id() ) { \$d[] = \$i->get_data(); } } \$b->set_bundled_data_items( \$d ); \$b->save();" >/dev/null
+		contains "the plan says the item will be removed" "Removes bundled items the source no longer has: Silta-muki" "$(wp staging silta push "$PROD" --post="$bundle" --dry-run)"
+		wp staging silta push "$PROD" --post="$bundle" --yes >/dev/null
+		check "the removed item is gone on production" "$shirt=$red|" "$(bundle_items production "$pbundle")"
+		check "the remaining item kept its ID" "$(printf '%s' "$ids" | cut -d'|' -f2)|" "$(bundle_ids "$pbundle")"
+		wp staging silta undo "$(last_job)" --yes >/dev/null
+		check "undo puts the removed item back" "$mug=|$shirt=$red|" "$(bundle_items production "$pbundle")"
+		check "with its settings" "1-1-no|1-3-yes|" "$(bundle_settings production "$pbundle")"
 	else
 		echo "skip WooCommerce Product Bundles is not active on both sites (put its zip in dev/woocommerce/extensions/)"
 	fi
