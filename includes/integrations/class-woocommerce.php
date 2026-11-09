@@ -622,20 +622,37 @@ final class WooCommerce {
 				return;
 			}
 
-			if ( $product->is_type( 'variable' ) ) {
-				\WC_Product_Variable::sync( $product, false );
-			} elseif ( $product->is_type( 'grouped' ) ) {
-				\WC_Product_Grouped::sync( $product, false );
-			} else {
-				// The data store never writes `_price` from the prop: it sets it
-				// itself only when the regular or sale price changes through it.
-				$price = $product->is_on_sale( 'edit' ) ? $product->get_sale_price( 'edit' ) : $product->get_regular_price( 'edit' );
-				update_post_meta( $id, '_price', $price );
-				$product->set_price( $price );
+			/**
+			 * Filters whether an integration brought a product's price up to
+			 * date itself, before the product is saved. Return true for a
+			 * product type whose price WooCommerce core can't derive (a
+			 * bundle's follows its items); core's own price sync is skipped.
+			 *
+			 * @param bool        $synced  Whether the price is synced.
+			 * @param \WC_Product $product Product.
+			 */
+			if ( ! apply_filters( 'jcore_silta_woocommerce_sync_price', false, $product ) ) {
+				if ( $product->is_type( 'variable' ) ) {
+					\WC_Product_Variable::sync( $product, false );
+				} elseif ( $product->is_type( 'grouped' ) ) {
+					\WC_Product_Grouped::sync( $product, false );
+				} else {
+					// The data store never writes `_price` from the prop: it sets it
+					// itself only when the regular or sale price changes through it.
+					$price = $product->is_on_sale( 'edit' ) ? $product->get_sale_price( 'edit' ) : $product->get_regular_price( 'edit' );
+					update_post_meta( $id, '_price', $price );
+					$product->set_price( $price );
+				}
 			}
 			$product->save();
 
-			wp_set_post_terms( $id, self::visibility_terms( $product ), 'product_visibility', false );
+			/**
+			 * Filters the visibility terms a product written by Silta gets.
+			 *
+			 * @param string[]    $terms   Term slugs.
+			 * @param \WC_Product $product Product.
+			 */
+			wp_set_post_terms( $id, (array) apply_filters( 'jcore_silta_woocommerce_visibility_terms', self::visibility_terms( $product ), $product ), 'product_visibility', false );
 			self::refresh_meta_lookup( $product );
 			if ( $lookup && class_exists( LookupDataStore::class ) ) {
 				wc_get_container()->get( LookupDataStore::class )->on_product_changed( $product );
@@ -689,7 +706,7 @@ final class WooCommerce {
 	 *
 	 * @return void
 	 */
-	private static function refresh_meta_lookup( \WC_Product $product ): void {
+	public static function refresh_meta_lookup( \WC_Product $product ): void {
 		$id    = $product->get_id();
 		$class = $product->get_data_store() ? $product->get_data_store()->get_current_class_name() : '';
 		$store = is_string( $class ) && is_a( $class, \WC_Product_Data_Store_CPT::class, true ) ? new $class() : new \WC_Product_Data_Store_CPT();
