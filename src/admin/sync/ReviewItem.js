@@ -100,6 +100,7 @@ export default function ReviewItem( { item, flow, keys, onPatch } ) {
 					</p>
 				) }
 				<Match item={ item } />
+				<Notes item={ item } />
 				<Conflict item={ item } flow={ flow } onPatch={ onPatch } />
 				<SectionErrors item={ item } />
 				<Missing item={ item } keys={ keys } />
@@ -234,6 +235,28 @@ function Conflict( { item, flow, onPatch } ) {
 				onChange={ ( confirmed ) => onPatch( item, { confirmed } ) }
 			/>
 		</div>
+	);
+}
+
+/**
+ * Lists what the sync will do on the target besides writing the item, such as
+ * creating a product attribute.
+ *
+ * @param {Object} props      Props.
+ * @param {Object} props.item Item.
+ * @return {Element|null} List.
+ */
+function Notes( { item } ) {
+	const notes = item.plan?.notes || [];
+	if ( ! notes.length ) {
+		return null;
+	}
+	return (
+		<ul className="jcore-silta-item__notes">
+			{ notes.map( ( note ) => (
+				<li key={ note }>{ note }</li>
+			) ) }
+		</ul>
 	);
 }
 

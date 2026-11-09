@@ -17,7 +17,12 @@ import ConfirmModal from '../components/ConfirmModal';
 import ErrorNotice from '../components/ErrorNotice';
 import BulkSections from './BulkSections';
 import ReviewGroup from './ReviewGroup';
-import { isSkippedConflict, itemCategory, itemTitle } from './items';
+import {
+	canInclude,
+	isSkippedConflict,
+	itemCategory,
+	itemTitle,
+} from './items';
 
 /**
  * Step 4: review what the sync will do, adjust it, then run it.
@@ -60,6 +65,22 @@ export default function Review( { flow } ) {
 		);
 
 	/**
+	 * Ticks or unticks the companions of items (a product's variations), as
+	 * the server does: they sync with their owner or not at all.
+	 *
+	 * @param {Set}     owners   Owner item IDs.
+	 * @param {boolean} included Ticked state.
+	 */
+	const includeCompanions = ( owners, included ) =>
+		setItems( ( current ) =>
+			current.map( ( item ) =>
+				owners.has( item.owner ) && ( ! included || canInclude( item ) )
+					? { ...item, included }
+					: item
+			)
+		);
+
+	/**
 	 * Changes one item: optimistic for flags, re-planned for overrides.
 	 *
 	 * @param {Object} item    Item.
@@ -70,12 +91,19 @@ export default function Review( { flow } ) {
 		const optimistic = { ...changes };
 		delete optimistic.override;
 		replace( { ...item, ...optimistic } );
+		const cascades = typeof changes.included === 'boolean';
+		if ( cascades ) {
+			includeCompanions( new Set( [ item.id ] ), changes.included );
+		}
 		try {
 			replace(
 				await patch( `/jobs/${ job.id }/items/${ item.id }`, changes )
 			);
 		} catch ( e ) {
 			replace( item );
+			if ( cascades ) {
+				setReload( ( value ) => value + 1 );
+			}
 			setError( errorMessage( e ) );
 		}
 	};
@@ -98,6 +126,9 @@ export default function Review( { flow } ) {
 				ids.has( item.id ) ? { ...item, ...changes } : item
 			)
 		);
+		if ( typeof changes.included === 'boolean' ) {
+			includeCompanions( ids, changes.included );
+		}
 		try {
 			await patch( `/jobs/${ job.id }/items`, {
 				ids: [ ...ids ],
@@ -314,7 +345,7 @@ export default function Review( { flow } ) {
 					description={ sprintf(
 						/* translators: 1: target site name, 2: source site name. */
 						__(
-							'These posts on %1$s came from %2$s in an earlier sync, but the originals no longer exist. Tick the ones to move to the trash. Nothing is deleted permanently.',
+							'These posts on %1$s came from %2$s in an earlier sync, but the originals no longer exist. Tick the ones to move to the trash; variations removed from a synced product are ticked already. Nothing is deleted permanently.',
 							'jcore-silta'
 						),
 						flow.targetLabel,

@@ -184,6 +184,12 @@ function itemProblem( item ) {
 		if ( result.reason === 'gone' ) {
 			return __( 'skipped: it was already gone.', 'jcore-silta' );
 		}
+		if ( result.reason === 'owner' ) {
+			return __(
+				'skipped: the product it belongs to wasn’t synced.',
+				'jcore-silta'
+			);
+		}
 		return __( 'skipped.', 'jcore-silta' );
 	}
 	return __( 'synced with warnings:', 'jcore-silta' );
