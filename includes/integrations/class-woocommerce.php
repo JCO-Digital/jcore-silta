@@ -566,7 +566,11 @@ final class WooCommerce {
 			} elseif ( $product->is_type( 'grouped' ) ) {
 				\WC_Product_Grouped::sync( $product, false );
 			} else {
-				$product->set_price( $product->is_on_sale( 'edit' ) ? $product->get_sale_price( 'edit' ) : $product->get_regular_price( 'edit' ) );
+				// The data store never writes `_price` from the prop: it sets it
+				// itself only when the regular or sale price changes through it.
+				$price = $product->is_on_sale( 'edit' ) ? $product->get_sale_price( 'edit' ) : $product->get_regular_price( 'edit' );
+				update_post_meta( $id, '_price', $price );
+				$product->set_price( $price );
 			}
 			$product->save();
 
