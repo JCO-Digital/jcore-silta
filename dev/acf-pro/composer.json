@@ -1,0 +1,28 @@
+{
+  "name": "jcodigital/jcore-silta-dev-acf-pro",
+  "description": "Dev stack and integration tests only: installs ACF Pro from its Composer repository. Never part of the plugin or its release.",
+  "type": "project",
+  "license": "proprietary",
+  "repositories": {
+    "acf": {
+      "type": "composer",
+      "url": "https://connect.advancedcustomfields.com",
+      "only": ["wpengine/*"]
+    }
+  },
+  "require": {
+    "composer/installers": "^2.0",
+    "wpengine/advanced-custom-fields-pro": "^6.0"
+  },
+  "config": {
+    "allow-plugins": {
+      "composer/installers": true
+    },
+    "sort-packages": true
+  },
+  "extra": {
+    "installer-paths": {
+      "plugins/{$name}/": ["type:wordpress-plugin"]
+    }
+  }
+}

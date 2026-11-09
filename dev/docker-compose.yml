@@ -1,7 +1,9 @@
 # Local two-site stack for syncing: staging and production WordPress + MariaDB.
 #   docker compose up -d && ./setup.sh
 # Staging: http://localhost:8090, production: http://localhost:8091 (admin / admin).
-# Gravity Forms is added when dev/.env has a license key (see dev/.env.example).
+# Gravity Forms and ACF Pro are added when dev/.env has their license keys (see
+# dev/.env.example), paid WooCommerce extensions when their zips are in
+# dev/woocommerce/extensions/.
 # WP-CLI: docker compose run --rm cli-staging wp ... (or cli-production).
 name: jcore-silta-dev
 
@@ -15,8 +17,10 @@ x-staging-env: &staging-env
   WORDPRESS_DB_PASSWORD: wordpress
   WORDPRESS_DB_NAME: staging
   WORDPRESS_DEBUG: "1"
-  # Optional, from dev/.env: pre-fills the Gravity Forms license when it is installed.
+  # Optional, from dev/.env: pre-fill the Gravity Forms and ACF Pro licenses
+  # when they are installed.
   GRAVITY_FORMS_LICENSE_KEY: ${GRAVITY_FORMS_LICENSE_KEY:-}
+  ACF_PRO_LICENSE_KEY: ${ACF_PRO_LICENSE_KEY:-}
   WORDPRESS_CONFIG_EXTRA: |
     define( 'WP_HOME', 'http://localhost:8090' );
     define( 'WP_SITEURL', 'http://localhost:8090' );
@@ -24,6 +28,7 @@ x-staging-env: &staging-env
     define( 'WP_DEBUG_LOG', true );
     define( 'WP_DEBUG_DISPLAY', false );
     if ( getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ) { define( 'GF_LICENSE_KEY', getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ); }
+    if ( getenv( 'ACF_PRO_LICENSE_KEY' ) ) { define( 'ACF_PRO_LICENSE', getenv( 'ACF_PRO_LICENSE_KEY' ) ); }
 
 x-production-env: &production-env
   WORDPRESS_DB_HOST: db
@@ -31,8 +36,10 @@ x-production-env: &production-env
   WORDPRESS_DB_PASSWORD: wordpress
   WORDPRESS_DB_NAME: production
   WORDPRESS_DEBUG: "1"
-  # Optional, from dev/.env: pre-fills the Gravity Forms license when it is installed.
+  # Optional, from dev/.env: pre-fill the Gravity Forms and ACF Pro licenses
+  # when they are installed.
   GRAVITY_FORMS_LICENSE_KEY: ${GRAVITY_FORMS_LICENSE_KEY:-}
+  ACF_PRO_LICENSE_KEY: ${ACF_PRO_LICENSE_KEY:-}
   WORDPRESS_CONFIG_EXTRA: |
     define( 'WP_HOME', 'http://localhost:8091' );
     define( 'WP_SITEURL', 'http://localhost:8091' );
@@ -40,6 +47,7 @@ x-production-env: &production-env
     define( 'WP_DEBUG_LOG', true );
     define( 'WP_DEBUG_DISPLAY', false );
     if ( getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ) { define( 'GF_LICENSE_KEY', getenv( 'GRAVITY_FORMS_LICENSE_KEY' ) ); }
+    if ( getenv( 'ACF_PRO_LICENSE_KEY' ) ) { define( 'ACF_PRO_LICENSE', getenv( 'ACF_PRO_LICENSE_KEY' ) ); }
 
 services:
   db:
@@ -88,9 +96,12 @@ services:
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - ./seed:/seed:ro
-      # Gravity Forms, when dev/gravityforms/install.sh installed it; setup.sh
-      # copies it into the site.
+      # Commercial plugins, when dev/gravityforms/install.sh and
+      # dev/acf-pro/install.sh installed them or extension zips were dropped in
+      # dev/woocommerce/extensions/; setup.sh copies them into the site.
       - ./gravityforms/plugins:/gravityforms:ro
+      - ./acf-pro/plugins:/acf-pro:ro
+      - ./woocommerce/extensions:/woocommerce-extensions:ro
 
   cli-production:
     image: wordpress:cli-php8.3
@@ -106,9 +117,12 @@ services:
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - ./seed:/seed:ro
-      # Gravity Forms, when dev/gravityforms/install.sh installed it; setup.sh
-      # copies it into the site.
+      # Commercial plugins, when dev/gravityforms/install.sh and
+      # dev/acf-pro/install.sh installed them or extension zips were dropped in
+      # dev/woocommerce/extensions/; setup.sh copies them into the site.
       - ./gravityforms/plugins:/gravityforms:ro
+      - ./acf-pro/plugins:/acf-pro:ro
+      - ./woocommerce/extensions:/woocommerce-extensions:ro
 
   # Used once by setup.sh to copy staging's uploads into production.
   copy-uploads:

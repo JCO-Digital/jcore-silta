@@ -23,7 +23,11 @@ cd dev && docker compose up -d && ./setup.sh
 
 That gives you two paired sites: *staging* on <http://localhost:8090> and *production* on <http://localhost:8091> (log in as `admin` / `admin`). Production starts as a clone of staging, and the two have drifted apart since, the way real ones do. See [dev/README.md](dev/README.md) for what the seed creates and how to run WP-CLI on each site.
 
-### Gravity Forms in the dev stack (optional)
+### Commercial plugins in the dev stack (optional)
+
+Gravity Forms, ACF Pro and paid WooCommerce extensions are commercial, so the dev stack and the integration tests only get them when you supply a license key or the plugin itself. Without them, everything else still runs: the Gravity Forms checks print `skip`, and the ACF checks run against Secure Custom Fields, the free fork with the same field types. WooCommerce itself comes from wordpress.org. [dev/README.md](dev/README.md) has the details.
+
+#### Gravity Forms
 
 Gravity Forms is commercial, so the dev stack and the integration tests only get it when you have a license key. It is installed from [Gravity Forms' Composer repository](https://docs.gravityforms.com/install-gravity-plugins-and-add-ons-via-composer/) (`composer.gravity.io`, package `gravity/gravityforms`), which serves Elite and legacy Developer licenses only.
 
@@ -35,6 +39,14 @@ cd dev && ./reset.sh           # or ./setup.sh on an existing stack
 `dev/setup.sh` runs `dev/gravityforms/install.sh`, which hands the key to Composer through `COMPOSER_AUTH` (HTTP basic auth: the key is the user name, `GRAVITY_FORMS_SITE_URL` the password, `http://localhost:8090` by default) for that one command and installs into `dev/gravityforms/plugins/`. `dev/.env`, `auth.json` and everything installed there are git-ignored. Gravity Forms is a separate Composer project under `dev/`: the plugin's own `composer.json` doesn't know about it, so `composer install` and the release build never need the key, and `.distignore` keeps `dev/` out of the zip. Without a key the install script prints a note and the stack runs without Gravity Forms.
 
 In CI, add the license key as the repository secret **`GRAVITY_FORMS_LICENSE_KEY`** (Settings → Secrets and variables → Actions); optionally set the repository variable `GRAVITY_FORMS_SITE_URL`. The integration workflow passes both to `tests/integration/run.sh`. Pull requests from forks get no secrets, so there the Gravity Forms checks print `skip` and the rest of the run goes on.
+
+#### ACF Pro
+
+The same mechanism as Gravity Forms, from [ACF's Composer repository](https://www.advancedcustomfields.com/resources/installing-acf-pro-with-composer/) (`connect.advancedcustomfields.com`, package `wpengine/advanced-custom-fields-pro`): set `ACF_PRO_LICENSE_KEY` and `ACF_PRO_SITE_URL` (a site URL the license is active for) in `dev/.env`, and `dev/acf-pro/install.sh` installs it into `dev/acf-pro/plugins/`. `dev/setup.sh` then runs ACF Pro on both sites instead of Secure Custom Fields. In CI, add the **`ACF_PRO_LICENSE_KEY`** repository secret and optionally the `ACF_PRO_SITE_URL` variable.
+
+#### WooCommerce extensions
+
+woocommerce.com has no Composer repository that takes a license key, so paid extensions such as WooCommerce Product Bundles are installed from zips: download them from your woocommerce.com account into `dev/woocommerce/extensions/` (git-ignored; this repository is public, so never commit one), and `dev/setup.sh` installs every zip there on both sites. CI runs without them.
 
 For UI work on a single site, `pnpm playground` serves [WordPress Playground](https://wordpress.org/playground/) on <http://localhost:8887> from `.wp/blueprint.json`.
 

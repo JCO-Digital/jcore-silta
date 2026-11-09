@@ -56,9 +56,24 @@ post_id() {
 	wp "$1" post list --name="$2" --post_type="${3:-post}" --post_status=any --field=ID --lang= | head -1
 }
 
+# active_on_both <plugin slug>: whether a plugin is active on both sites.
+# Checks for optional plugins (paid WooCommerce extensions) skip without it.
+active_on_both() {
+	wp staging plugin is-active "$1" && wp production plugin is-active "$1"
+}
+
 last_job() {
 	wp staging silta jobs --format=json | php -r 'echo json_decode( stream_get_contents( STDIN ), true )[0]["id"] ?? "";'
 }
+
+# The ACF checks below run against whichever ACF the stack has: ACF Pro with
+# a license key (dev/.env locally, the ACF_PRO_LICENSE_KEY secret in CI),
+# otherwise Secure Custom Fields.
+if wp staging plugin is-active advanced-custom-fields-pro; then
+	echo "ACF: ACF Pro $(wp staging plugin get advanced-custom-fields-pro --field=version)"
+else
+	echo "ACF: Secure Custom Fields $(wp staging plugin get secure-custom-fields --field=version) (set ACF_PRO_LICENSE_KEY to test ACF Pro)"
+fi
 
 echo "== Pairing"
 contains "staging connects to production with read and write" "read,write" "$(wp staging silta connections list --format=csv)"
@@ -245,6 +260,38 @@ if [ "$(wp staging eval 'echo class_exists( "GFAPI" ) ? "yes" : "no";')" = "yes"
 	check "entries are never synced" "0" "$(wp production eval "echo GFAPI::count_entries( $p_contact );")"
 else
 	echo "skip Gravity Forms is not active on both sites (set GRAVITY_FORMS_LICENSE_KEY, see dev/.env.example)"
+fi
+
+echo "== WooCommerce"
+if [ "$(wp staging eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" = "yes" ] && [ "$(wp production eval 'echo class_exists( "WooCommerce" ) ? "yes" : "no";')" = "yes" ]; then
+	woo_json=$(wp staging option get silta_dev_woo_seed --format=json)
+	# woo <name>: staging ID of a seeded product (seed/woocommerce.php)
+	woo() { printf '%s' "$woo_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )["products"][ $argv[1] ] ?? "";' "$1"; }
+	# woo_ext <plugin slug> <name>: staging ID seeded by seed/woocommerce/<plugin slug>.php
+	woo_ext() { printf '%s' "$woo_json" | php -r 'echo json_decode( stream_get_contents( STDIN ), true )["extensions"][ $argv[1] ][ $argv[2] ] ?? "";' "$1" "$2"; }
+
+	# A simple product is an ordinary post with meta and terms.
+	wp staging silta push "$PROD" --post="$(woo mug)" --yes >/dev/null
+	mug=$(post_id production silta-muki product)
+	[ -n "$mug" ] && echo "ok   the simple product was created on production (#$mug)" || { echo "FAIL the simple product is not on production"; failures=$((failures + 1)); }
+	check "SKU" "SILTA-MUKI" "$(wp production post meta get "$mug" _sku)"
+	check "price" "14.90" "$(wp production eval "echo wc_get_product( $mug )->get_price();")"
+	check "product type" "simple" "$(wp production eval "echo wc_get_product( $mug )->get_type();")"
+	check "product category created" "Tarvikkeet" "$(wp production eval "echo implode( ',', wp_get_post_terms( $mug, 'product_cat', array( 'fields' => 'names' ) ) );")"
+
+	# Paid extensions: one block each, skipped unless the plugin is active on
+	# both sites (its zip is in dev/woocommerce/extensions/).
+	echo "== WooCommerce Product Bundles"
+	if active_on_both woocommerce-product-bundles; then
+		bundle=$(woo_ext woocommerce-product-bundles bundle)
+		check "the bundle is seeded on staging" "bundle" "$(wp staging eval "echo wc_get_product( $bundle )->get_type();")"
+		check "with its items and their settings" "1-1-no|1-2-yes|" "$(wp staging eval "foreach ( wc_get_product( $bundle )->get_bundled_items() as \$i ) { echo \$i->get_quantity( 'min' ), '-', \$i->get_quantity( 'max' ), '-', \$i->is_optional() ? 'yes' : 'no', '|'; }")"
+		# Syncing bundles isn't supported yet; its checks go here.
+	else
+		echo "skip WooCommerce Product Bundles is not active on both sites (put its zip in dev/woocommerce/extensions/)"
+	fi
+else
+	echo "skip WooCommerce is not active on both sites"
 fi
 
 echo "== Clone detection"
