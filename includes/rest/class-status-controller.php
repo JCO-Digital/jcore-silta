@@ -60,9 +60,10 @@ final class Status_Controller extends Controller {
 			return new WP_Error( 'jcore_silta_not_found', __( 'This post cannot be synced.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
 
-		$key   = Util::key( 'post', $id );
-		$hash  = State::hash( $state );
-		$sites = array();
+		$key    = Util::key( 'post', $id );
+		$hash   = State::hash( $state );
+		$legacy = State::legacy_hash( $state );
+		$sites  = array();
 
 		foreach ( Connections::all() as $connection ) {
 			if ( ! in_array( 'write', (array) $connection['scopes'], true ) ) {
@@ -79,8 +80,9 @@ final class Status_Controller extends Controller {
 				array(
 					'items' => array(
 						array(
-							'key'  => $key,
-							'hash' => $hash,
+							'key'         => $key,
+							'hash'        => $hash,
+							'legacy_hash' => $legacy,
 						),
 					),
 				)

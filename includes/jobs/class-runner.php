@@ -320,7 +320,7 @@ final class Runner {
 			return $response;
 		}
 
-		$this->store_plan( $item, (array) ( $response['plans'][ $item['key'] ] ?? array() ) );
+		$this->store_plan( $item, (array) ( $response['plans'][ $item['key'] ] ?? array() ), true );
 
 		return (array) Jobs::item( (int) $this->job['id'], $item_id );
 	}
@@ -767,6 +767,7 @@ final class Runner {
 			);
 			$item['payload'] = $payload;
 			$planned[]       = $item;
+			$this->add_companions( $item, $record, $level );
 		}
 
 		$planned = $this->fit_items( $this->permitted_items( $planned ) );
@@ -1160,6 +1161,7 @@ final class Runner {
 				)
 			);
 		}
+		$items = $this->owned_orphans( $items );
 		if ( empty( $items ) ) {
 			return false;
 		}
@@ -1192,6 +1194,48 @@ final class Runner {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Keeps orphans that belong to an item (variations removed from a product)
+	 * only when that item was written: a product skipped as a conflict, or one
+	 * that failed, keeps its variations too.
+	 *
+	 * @param array<int, array<string, mixed>> $items Orphan items.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function owned_orphans( array $items ): array {
+		$owners = array_values( array_filter( array_map( 'intval', array_column( $items, 'owner' ) ) ) );
+		if ( empty( $owners ) ) {
+			return $items;
+		}
+
+		$written = array();
+		foreach ( Jobs::items( (int) $this->job['id'], array( 'id' => array_values( array_unique( $owners ) ) ) ) as $owner ) {
+			$written[ (int) $owner['id'] ] = 'imported' === $owner['status'];
+		}
+
+		$kept = array();
+		foreach ( $items as $item ) {
+			$owner = (int) ( $item['owner'] ?? 0 );
+			if ( $owner > 0 && empty( $written[ $owner ] ) ) {
+				Jobs::update_item(
+					(int) $item['id'],
+					array(
+						'status' => 'skipped',
+						'result' => array(
+							'status' => 'skipped',
+							'reason' => 'owner',
+						),
+					)
+				);
+				continue;
+			}
+			$kept[] = $item;
+		}
+
+		return $kept;
 	}
 
 	/**
@@ -1609,13 +1653,15 @@ final class Runner {
 	/**
 	 * Stores what the target planned for an item.
 	 *
-	 * @param array<string, mixed> $item Item.
-	 * @param array<string, mixed> $plan Plan.
+	 * @param array<string, mixed> $item    Item.
+	 * @param array<string, mixed> $plan    Plan.
+	 * @param bool                 $replace Whether the item was planned before (its companion orphans are replaced).
 	 *
 	 * @return void
 	 */
-	private function store_plan( array $item, array $plan ): void {
-		$action = (string) ( $plan['action'] ?? 'error' );
+	private function store_plan( array $item, array $plan, bool $replace = false ): void {
+		$action   = (string) ( $plan['action'] ?? 'error' );
+		$included = 'error' === $action ? false : (bool) $item['included'];
 
 		Jobs::update_item(
 			(int) $item['id'],
@@ -1624,10 +1670,88 @@ final class Runner {
 				'action'    => $action,
 				'conflict'  => ! empty( $plan['conflict'] ),
 				'target_id' => (int) ( $plan['match']['id'] ?? 0 ),
-				'included'  => 'error' === $action ? false : (bool) $item['included'],
+				'included'  => $included,
 				'plan'      => $plan,
 			)
 		);
+		if ( 'post' === $item['object_type'] ) {
+			$this->companion_orphans( $item, $plan, $included, $replace );
+		}
+	}
+
+	/**
+	 * Adds the posts that always travel with an object (a variable product's
+	 * variations) at its level, ticked like it. They are planned in a later
+	 * batch of the same level, and import after it as its children.
+	 *
+	 * @param array<string, mixed> $item   Owner item.
+	 * @param array<string, mixed> $record Its exported record.
+	 * @param int                  $level  Level.
+	 *
+	 * @return void
+	 */
+	private function add_companions( array $item, array $record, int $level ): void {
+		$companions = array();
+		foreach ( (array) ( $record['companions'] ?? array() ) as $post_type => $ids ) {
+			foreach ( (array) $ids as $id ) {
+				$companions[] = array(
+					'object_type' => 'post',
+					'source_id'   => (int) $id,
+					'subtype'     => sanitize_key( (string) $post_type ),
+					'level'       => $level,
+					'included'    => (int) (bool) $item['included'],
+					'owner'       => (int) $item['id'],
+				);
+			}
+		}
+
+		Jobs::add_items( (int) $this->job['id'], $companions );
+	}
+
+	/**
+	 * Lists the target's companions of an item that the source no longer has
+	 * (variations removed from a product) as orphans, ticked like the item.
+	 * Planning the item again replaces them.
+	 *
+	 * @param array<string, mixed> $item     Owner item.
+	 * @param array<string, mixed> $plan     Its plan.
+	 * @param bool                 $included Whether the item is ticked.
+	 * @param bool                 $replace  Whether the item was planned before.
+	 *
+	 * @return void
+	 */
+	private function companion_orphans( array $item, array $plan, bool $included, bool $replace ): void {
+		$job_id = (int) $this->job['id'];
+		if ( $replace ) {
+			Jobs::delete_items(
+				$job_id,
+				array(
+					'object_type' => 'orphan',
+					'owner'       => (int) $item['id'],
+				)
+			);
+		}
+
+		$orphans = array();
+		foreach ( (array) ( $plan['orphans'] ?? array() ) as $orphan ) {
+			if ( ! is_array( $orphan ) || ! is_int( $orphan['id'] ?? null ) || $orphan['id'] <= 0 ) {
+				continue;
+			}
+			$orphans[] = array(
+				'object_type' => 'orphan',
+				'source_id'   => $orphan['id'],
+				'subtype'     => sanitize_key( is_string( $orphan['post_type'] ?? null ) ? $orphan['post_type'] : '' ),
+				'title'       => sanitize_text_field( is_string( $orphan['title'] ?? null ) ? $orphan['title'] : '' ),
+				'level'       => (int) $item['level'],
+				'included'    => (int) $included,
+				'status'      => 'planned',
+				'action'      => 'trash',
+				'target_id'   => $orphan['id'],
+				'owner'       => (int) $item['id'],
+			);
+		}
+
+		Jobs::add_items( $job_id, $orphans );
 	}
 
 	/**

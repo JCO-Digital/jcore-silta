@@ -269,8 +269,11 @@ final class Local extends Endpoint {
 				continue;
 			}
 
-			$source_changed = (string) ( $item['hash'] ?? '' ) !== (string) $row['remote_hash'];
-			$target_changed = '' !== (string) $row['local_hash'] && $row['local_hash'] !== State::hash( $state );
+			// The source also sends the legacy hash, which matches mappings
+			// stored by earlier versions; an older source sends only one.
+			$hashes         = array_filter( array( (string) ( $item['hash'] ?? '' ), (string) ( $item['legacy_hash'] ?? '' ) ) );
+			$source_changed = array() === $hashes ? '' !== (string) $row['remote_hash'] : ! in_array( (string) $row['remote_hash'], $hashes, true );
+			$target_changed = '' !== (string) $row['local_hash'] && ! State::hash_matches( (string) $row['local_hash'], $state );
 
 			$statuses[ (string) $item['key'] ] = array(
 				'state'     => $source_changed && $target_changed ? 'both_changed' : ( $source_changed ? 'source_changed' : ( $target_changed ? 'target_changed' : 'synced' ) ),

@@ -261,6 +261,24 @@ final class Context {
 				}
 			}
 		}
+		if ( isset( $record['companions'] ) ) {
+			if ( ! is_array( $record['companions'] ) ) {
+				return $error;
+			}
+			foreach ( $record['companions'] as $post_type => $ids ) {
+				if ( ! is_string( $post_type ) || ! is_array( $ids ) || ! array_is_list( $ids ) ) {
+					return $error;
+				}
+				foreach ( $ids as $id ) {
+					if ( ! is_int( $id ) || $id <= 0 ) {
+						return $error;
+					}
+				}
+			}
+		}
+		if ( isset( $record['extra'] ) && ! is_array( $record['extra'] ) ) {
+			return $error;
+		}
 		if ( isset( $record['language'] ) ) {
 			$language = $record['language'];
 			if ( ! is_array( $language ) || ! is_string( $language['lang'] ?? null ) || ! is_array( $language['translations'] ?? null ) ) {
@@ -408,6 +426,23 @@ final class Context {
 		}
 
 		$match = $this->matcher->match( $record );
+		if ( null === $match && 'post' === $record['type'] ) {
+			/**
+			 * Filters the match for a post the matching ladder found no copy
+			 * of, e.g. a product variation by its parent and attributes.
+			 *
+			 * @param array{id: int, method: string}|null $match   Match.
+			 * @param array<string, mixed>                $record  Incoming post.
+			 * @param callable                            $resolve Resolves a remote ID: ( string $kind, int $id ): ?int.
+			 */
+			$found = apply_filters( 'jcore_silta_match_post', null, $record, array( $this, 'resolve' ) );
+			if ( is_array( $found ) && is_int( $found['id'] ?? null ) && $found['id'] > 0 && is_string( $found['method'] ?? null ) && $this->matcher->free( 'post', $found['id'], (int) $record['id'] ) ) {
+				$match = array(
+					'id'     => $found['id'],
+					'method' => $found['method'],
+				);
+			}
+		}
 
 		return null !== $match && $this->override_ok( $record, $match['id'] ) ? $match : null;
 	}
@@ -601,7 +636,7 @@ final class Context {
 		$row = Mapping::get( $this->site, Mapping::type_for( (string) $record['type'] ), (int) $record['id'] );
 
 		if ( null !== $row && (int) $row['local_id'] === $local_id && '' !== $row['local_hash'] ) {
-			return $row['local_hash'] !== State::hash( $local ) ? 'modified' : null;
+			return State::hash_matches( (string) $row['local_hash'], $local ) ? null : 'modified';
 		}
 
 		$theirs = (string) ( $record['modified_gmt'] ?? '' );

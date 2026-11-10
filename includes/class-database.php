@@ -19,7 +19,7 @@ final class Database {
 	/**
 	 * Schema version. Bump it whenever a CREATE TABLE below changes.
 	 */
-	private const DB_VERSION = '1.2';
+	private const DB_VERSION = '1.3';
 
 	/**
 	 * Option holding the installed schema version.
@@ -200,6 +200,7 @@ included tinyint(1) NOT NULL DEFAULT 1,
 status varchar(20) NOT NULL DEFAULT 'pending',
 action varchar(20) NOT NULL DEFAULT '',
 target_id bigint(20) unsigned NOT NULL DEFAULT 0,
+owner bigint(20) unsigned NOT NULL DEFAULT 0,
 conflict tinyint(1) NOT NULL DEFAULT 0,
 confirmed tinyint(1) NOT NULL DEFAULT 0,
 sections longtext NULL,

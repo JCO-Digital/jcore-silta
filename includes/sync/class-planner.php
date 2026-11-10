@@ -135,6 +135,7 @@ final class Planner {
 		$plan['missing'] = $this->missing( (array) $incoming['unresolved'] );
 
 		if ( 'term' === $record['type'] ) {
+			$plan['notes']  = self::notes( $record, $incoming, null );
 			$plan['action'] = null === $match ? 'create' : 'match';
 
 			return $plan;
@@ -144,6 +145,7 @@ final class Planner {
 		if ( 'post' === $record['type'] ) {
 			$incoming['fields']['post_status'] = $this->ctx->status( $incoming, $local );
 		}
+		$plan['notes'] = self::notes( $record, $incoming, $local );
 
 		$sections = Differ::sections( $incoming, $local );
 		foreach ( $sections as $section => $info ) {
@@ -158,9 +160,65 @@ final class Planner {
 			if ( 'update' === $plan['action'] ) {
 				$plan['conflict'] = $this->ctx->conflict( $record, (int) $match['id'], $local );
 			}
+			if ( 'post' === $record['type'] ) {
+				$plan['orphans'] = $this->companion_orphans( $record, (int) $match['id'] );
+			}
 		}
 
 		return $plan;
+	}
+
+	/**
+	 * Returns the notes shown with an object's plan.
+	 *
+	 * @param array<string, mixed>      $record   Incoming object, as exported.
+	 * @param array<string, mixed>      $incoming Incoming object with local IDs.
+	 * @param array<string, mixed>|null $local    Local copy, if any (never for terms).
+	 *
+	 * @return string[]
+	 */
+	private static function notes( array $record, array $incoming, ?array $local ): array {
+		/**
+		 * Filters notes shown with an object's plan: what the sync will do on
+		 * this site beyond writing the object (e.g. create a product attribute).
+		 *
+		 * @param string[]                  $notes    Notes.
+		 * @param array<string, mixed>      $record   Incoming object, as exported.
+		 * @param array<string, mixed>      $incoming Incoming object with local IDs.
+		 * @param array<string, mixed>|null $local    Local copy, if any (never for terms).
+		 */
+		return array_values( array_filter( (array) apply_filters( 'jcore_silta_plan_notes', array(), $record, $incoming, $local ), 'is_string' ) );
+	}
+
+	/**
+	 * Lists the local post's companions (a product's variations) that came
+	 * from the source but that the source no longer lists.
+	 *
+	 * @param array<string, mixed> $record   Incoming post.
+	 * @param int                  $local_id Local post ID.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function companion_orphans( array $record, int $local_id ): array {
+		$orphans = array();
+		foreach ( (array) ( $record['companions'] ?? array() ) as $post_type => $ids ) {
+			$present = array_flip( array_map( 'intval', (array) $ids ) );
+			foreach ( Mapping::children_of( $this->ctx->site, $local_id, (string) $post_type ) as $remote_id => $child ) {
+				if ( isset( $present[ $remote_id ] ) ) {
+					continue;
+				}
+				$post      = get_post( $child );
+				$orphans[] = array(
+					'id'        => $child,
+					'remote_id' => $remote_id,
+					'post_type' => (string) $post_type,
+					'title'     => $post instanceof \WP_Post ? $post->post_title : '#' . $child,
+					'status'    => $post instanceof \WP_Post ? $post->post_status : '',
+				);
+			}
+		}
+
+		return $orphans;
 	}
 
 	/**

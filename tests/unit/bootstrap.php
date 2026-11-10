@@ -8,7 +8,7 @@
  * @package Jcore\Silta
  */
 
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- Stand-ins for core functions.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals, Generic.CodeAnalysis.UnusedFunctionParameter -- Stand-ins for core functions and their signatures.
 
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'JCORE_SILTA_PATH', dirname( __DIR__, 2 ) . '/' );
@@ -103,4 +103,103 @@ function serialize_block_attributes( array $block_attributes ): string {
 			'\\"'  => '\\u0022',
 		)
 	);
+}
+
+// A small hook registry for add_action() / do_action(); apply_filters() above
+// stays the single-callback stand-in the tests register directly.
+if ( ! function_exists( 'add_action' ) ) {
+	/**
+	 * Registers a callback.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @param int    $priority Priority.
+	 * @param int    $args     Accepted arguments.
+	 * @return true
+	 */
+	function add_action( string $hook, mixed $callback, int $priority = 10, int $args = 1 ): bool {
+		$GLOBALS['jcore_silta_test_actions'][ $hook ][ $priority ][] = $callback;
+
+		return true;
+	}
+}
+if ( ! function_exists( 'add_filter' ) ) {
+	/**
+	 * Registers a filter callback.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @param int    $priority Priority.
+	 * @param int    $args     Accepted arguments.
+	 * @return true
+	 */
+	function add_filter( string $hook, mixed $callback, int $priority = 10, int $args = 1 ): bool {
+		return add_action( $hook, $callback, $priority, $args );
+	}
+}
+if ( ! function_exists( 'has_action' ) ) {
+	/**
+	 * Returns a callback's priority.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @return int|false
+	 */
+	function has_action( string $hook, mixed $callback ): int|false {
+		foreach ( $GLOBALS['jcore_silta_test_actions'][ $hook ] ?? array() as $priority => $callbacks ) {
+			if ( in_array( $callback, $callbacks, true ) ) {
+				return $priority;
+			}
+		}
+
+		return false;
+	}
+}
+if ( ! function_exists( 'remove_action' ) ) {
+	/**
+	 * Removes a callback.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @param int    $priority Priority.
+	 * @return bool
+	 */
+	function remove_action( string $hook, mixed $callback, int $priority = 10 ): bool {
+		$callbacks = $GLOBALS['jcore_silta_test_actions'][ $hook ][ $priority ] ?? array();
+		$index     = array_search( $callback, $callbacks, true );
+		if ( false === $index ) {
+			return false;
+		}
+		unset( $GLOBALS['jcore_silta_test_actions'][ $hook ][ $priority ][ $index ] );
+
+		return true;
+	}
+}
+if ( ! function_exists( 'do_action' ) ) {
+	/**
+	 * Runs a hook's callbacks by priority, re-reading the registry after each
+	 * priority like WP_Hook does when callbacks change during a run.
+	 *
+	 * @param string $hook    Hook.
+	 * @param mixed  ...$args Arguments.
+	 * @return void
+	 */
+	function do_action( string $hook, mixed ...$args ): void {
+		$done = -PHP_INT_MAX;
+		while ( true ) {
+			$next = null;
+			foreach ( array_keys( $GLOBALS['jcore_silta_test_actions'][ $hook ] ?? array() ) as $priority ) {
+				if ( $priority > $done && ( null === $next || $priority < $next ) && ! empty( $GLOBALS['jcore_silta_test_actions'][ $hook ][ $priority ] ) ) {
+					$next = $priority;
+				}
+			}
+			if ( null === $next ) {
+				return;
+			}
+			foreach ( $GLOBALS['jcore_silta_test_actions'][ $hook ][ $next ] as $callback ) {
+				$callback( ...$args );
+			}
+			$done = $next;
+		}
+	}
 }

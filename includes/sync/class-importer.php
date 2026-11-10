@@ -75,6 +75,15 @@ final class Importer {
 			$results[ $key ] = self::failed( $error );
 		}
 
+		/**
+		 * Fires before Silta writes a batch of objects (an import or an undo).
+		 * Integrations can prepare what the objects need, and collect what
+		 * they write until jcore_silta_writes_done.
+		 *
+		 * @param array<string, array<string, mixed>> $objects Incoming objects by key; empty for an undo.
+		 */
+		do_action( 'jcore_silta_writes_start', $this->ctx->objects );
+
 		foreach ( $this->ctx->objects as $key => $record ) {
 			try {
 				$results[ $key ] = match ( $record['type'] ) {
@@ -92,6 +101,11 @@ final class Importer {
 		foreach ( (array) ( $options['trash'] ?? array() ) as $id ) {
 			$results[ 'orphan:' . (int) $id ] = $this->trash( (int) $id );
 		}
+
+		/**
+		 * Fires after Silta wrote a batch of objects.
+		 */
+		do_action( 'jcore_silta_writes_done' );
 
 		if ( $kses ) {
 			kses_init_filters();
@@ -214,6 +228,21 @@ final class Importer {
 		}
 
 		clean_post_cache( $id );
+
+		/**
+		 * Fires after Silta wrote a post: imported, created or restored from a
+		 * snapshot. Meta is written as raw rows, so no meta hooks fired.
+		 *
+		 * @param int                  $id       Local post ID.
+		 * @param array<string, mixed> $incoming State written, with local IDs.
+		 * @param bool                 $created  Whether the post was just created.
+		 * @param bool                 $restore  Whether this restored a snapshot.
+		 * @param callable             $wants    Whether a section is to be written:
+		 *                                       ( string $section ): bool. Sections an
+		 *                                       integration adds through
+		 *                                       jcore_silta_post_sections are its to write.
+		 */
+		do_action( 'jcore_silta_post_written', $id, $incoming, null === $local, $restore, $wants );
 
 		return true;
 	}

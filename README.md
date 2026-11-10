@@ -197,10 +197,15 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_media_max_files`, `_media_max_bytes`, `_media_max_open_transfers` | filter | Media transfer limits (256 files, 5 GB, 10,000 open per site) |
 | `jcore_silta_remote_url` | filter | Rewrite the URL of a request to a remote (the dev stack maps localhost ports to container names) |
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
+| `jcore_silta_post_state`, `_export_object`, `_walk_post`, `_post_sections`, `_match_post`, `_match_by_slug`, `_preflight`, `_plan_notes` | filter | Integration hooks: what a post's state holds, what an export carries beyond it (`companions`, `extra`), the IDs in an integration's own data, extra diff sections, extra matching steps, problems and plan notes (see the docblocks where they are applied) |
+| `jcore_silta_writes_start`, `_post_written`, `_writes_done` | action | Integration hooks around a batch of writes (an import or an undo); `jcore_silta_post_written` gets whether each section is to be written |
+| `jcore_silta_woocommerce_sync_price`, `_woocommerce_visibility_terms` | filter | Let a product type of an extension take over its price in the WooCommerce refresh, and add to its visibility terms |
 
 ACF fields (image, file, gallery, post object, relationship, page link, taxonomy, user, the "ACF: Gravity Forms" `forms` field, also inside repeaters, flexible content, groups, clones and ACF blocks), core blocks, featured images, parents, terms, Polylang translations, menu items, the Yoast / Rank Math / SEOPress image and primary-term keys, and Gravity Forms embeds (the `gravityforms/form` block, the `[gravityform]` shortcode in content and plain-text meta, and confirmation pages) are handled without configuration.
 
 [jcore-maailma](https://github.com/JCO-Digital/jcore-maailma) global content is supported by `Integrations\Maailma`: it declares the `jco/global-content` block's `selectedPostId` and `selectedSlug` through `jcore_silta_block_references`, and keeps Maailma from renaming a global content post's slug after its title while Silta writes the post (`Sync\Importer::writing()`).
+
+WooCommerce Product Bundles is supported by `Integrations\WooCommerce_Product_Bundles`: a bundle's items (kept in the extension's own tables) travel in its state, their products and allowed variations are dependencies and are remapped, and they are written through the extension's CRUD. See [docs/design.md](docs/design.md#woocommerce-product-bundles).
 
 Gravity Forms embeds are handled by `Integrations\Gravity_Forms`: it declares the `gravityforms/form` block's `formId` through `jcore_silta_block_references`, and remaps the `[gravityform]` shortcode in content and plain-text meta and the pages confirmations redirect to. The forms themselves are a sync kind of their own (`Sync\Gravity_Forms`, through GFAPI).
 
@@ -224,15 +229,16 @@ wp silta key info | export | regenerate
 ## Testing
 
 - `composer test` runs the PHPUnit unit tests for the logic that needs no database: the serialization-safe replacer, ID remapping in blocks, ACF values and meta, jcore-maailma's block references, Gravity Forms blocks, shortcodes, confirmations, form matching and normalization, and request signatures.
-- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, Gravity Forms (when installed, see above: forms as dependencies, block and shortcode IDs remapped, URLs replaced, update and undo), and clone detection. CI runs it in `.github/workflows/integration.yml`. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
+- `tests/integration/run.sh` resets the dev stack and runs real syncs between the two sites: pairing, unsigned requests, dry runs, conflicts, dependencies and remapping, translations, undo, block content, media, pull, menus, whole post types with orphans, jcore-maailma global content, Gravity Forms (when installed, see above: forms as dependencies, block and shortcode IDs remapped, URLs replaced, update and undo), and clone detection. CI runs it in `.github/workflows/integration.yml`, the first job of the Release workflow. To run it next to an existing dev stack without touching its data, give it another project name: `COMPOSE_PROJECT_NAME=silta-it tests/integration/run.sh` (the ports are the same, so stop the other stack first).
 
 ## Releasing
 
-Pushing to `main` runs `.github/workflows/release.yml`:
+Pushing to `main` runs `.github/workflows/release.yml`. Each job waits for the one before it:
 
-1. **check** – lint, unit tests, build, then run Plugin Check against the tree minus `.distignore`. Also runs on pull requests.
-2. **release** – [foonver](https://github.com/foonly/foonver) reads the conventional commits since the last tag, bumps the version, syncs it into `jcore-silta.php`, `readme.txt` and `package.json`, writes the `== Changelog ==` section of `readme.txt` and pushes the tag.
-3. **publish** – the reusable workflow in [jcore-update](https://github.com/JCO-Digital/jcore-update) builds the zip, attaches it to a GitHub release, registers the version with `update.jcore.fi`, pushes to the dist repository and posts to Slack.
+1. **integration** – the two-site integration tests (`.github/workflows/integration.yml`). Also runs on pull requests.
+2. **check** – lint, unit tests, build, then run Plugin Check against the tree minus `.distignore`. Also runs on pull requests.
+3. **release** – [foonver](https://github.com/foonly/foonver) reads the conventional commits since the last tag, bumps the version, syncs it into `jcore-silta.php`, `readme.txt` and `package.json`, writes the `== Changelog ==` section of `readme.txt` and pushes the tag.
+4. **publish** – the reusable workflow in [jcore-update](https://github.com/JCO-Digital/jcore-update) builds the zip, attaches it to a GitHub release, registers the version with `update.jcore.fi`, pushes to the dist repository and posts to Slack.
 
 Every commit that reaches `main` produces a release, so work on branches and merge through pull requests. Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/).
 

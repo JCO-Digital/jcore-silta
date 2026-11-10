@@ -221,7 +221,8 @@ final class Jobs {
 	 * Adds items to a job, skipping ones it already has.
 	 *
 	 * @param int                              $job_id Job ID.
-	 * @param array<int, array<string, mixed>> $items  Items: object_type, source_id, subtype, title, level, position, included, status, action, target_id.
+	 * @param array<int, array<string, mixed>> $items  Items: object_type, source_id, subtype, title, level, position, included, status, action, target_id,
+	 *                                                 owner (the item a companion or companion orphan belongs to).
 	 *
 	 * @return int Items added.
 	 */
@@ -237,7 +238,7 @@ final class Jobs {
 			$rows = array();
 			foreach ( $chunk as $item ) {
 				$rows[] = $wpdb->prepare(
-					'(%d, %s, %d, %s, %s, %d, %d, %d, %s, %s, %d)',
+					'(%d, %s, %d, %s, %s, %d, %d, %d, %s, %s, %d, %d)',
 					$job_id,
 					(string) $item['object_type'],
 					(int) $item['source_id'],
@@ -248,12 +249,13 @@ final class Jobs {
 					(int) ( $item['included'] ?? 1 ),
 					(string) ( $item['status'] ?? 'pending' ),
 					(string) ( $item['action'] ?? '' ),
-					(int) ( $item['target_id'] ?? 0 )
+					(int) ( $item['target_id'] ?? 0 ),
+					(int) ( $item['owner'] ?? 0 )
 				);
 			}
 
 			$added += (int) $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Custom table; every row is prepared above.
-				$wpdb->prepare( 'INSERT IGNORE INTO %i (job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id) VALUES ', Database::table( 'items' ) ) . implode( ', ', $rows )
+				$wpdb->prepare( 'INSERT IGNORE INTO %i (job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, owner) VALUES ', Database::table( 'items' ) ) . implode( ', ', $rows )
 			);
 		}
 
@@ -274,7 +276,7 @@ final class Jobs {
 		global $wpdb;
 
 		list( $sql, $params ) = self::where( $job_id, $where );
-		$columns              = empty( $args['payload'] ) ? 'id, job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, conflict, confirmed, sections, override, plan, result' : '*';
+		$columns              = empty( $args['payload'] ) ? 'id, job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, owner, conflict, confirmed, sections, override, plan, result' : '*';
 		$order                = 'import' === ( $args['order'] ?? '' ) ? 'position ASC, id ASC' : 'level ASC, id ASC';
 		$limit                = isset( $args['limit'] ) ? $wpdb->prepare( ' LIMIT %d OFFSET %d', (int) $args['limit'], (int) ( $args['offset'] ?? 0 ) ) : '';
 
@@ -387,6 +389,51 @@ final class Jobs {
 	}
 
 	/**
+	 * Deletes every item matching a filter.
+	 *
+	 * @param int                  $job_id Job ID.
+	 * @param array<string, mixed> $where  Column filters.
+	 *
+	 * @return void
+	 */
+	public static function delete_items( int $job_id, array $where ): void {
+		global $wpdb;
+
+		list( $sql, $params ) = self::where( $job_id, $where );
+
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Custom table; the WHERE clause is built from placeholders.
+			$wpdb->prepare( "DELETE FROM %i WHERE {$sql}", array_merge( array( Database::table( 'items' ) ), $params ) ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Built from placeholders.
+		);
+	}
+
+	/**
+	 * Gives the companions of items (a variable product's variations, and the
+	 * variations it would trash) the same ticked state as the items: they are
+	 * synced with their owner or not at all. Items that can't be synced stay out.
+	 *
+	 * @param int   $job_id   Job ID.
+	 * @param int[] $owners   Owner item IDs.
+	 * @param bool  $included Ticked state.
+	 *
+	 * @return void
+	 */
+	public static function include_companions( int $job_id, array $owners, bool $included ): void {
+		$owners = array_values( array_filter( array_map( 'intval', $owners ) ) );
+		if ( empty( $owners ) ) {
+			return;
+		}
+
+		foreach ( self::items( $job_id, array( 'owner' => $owners ) ) as $item ) {
+			if ( $included && ( 'error' === $item['action'] || 'failed' === $item['status'] ) ) {
+				continue;
+			}
+			if ( (bool) $item['included'] !== $included ) {
+				self::update_item( (int) $item['id'], array( 'included' => $included ) );
+			}
+		}
+	}
+
+	/**
 	 * Returns the `type:id` keys of every object in a job.
 	 *
 	 * @param int $job_id Job ID.
@@ -455,7 +502,7 @@ final class Jobs {
 		$params = array( $job_id );
 
 		foreach ( $where as $column => $value ) {
-			if ( ! in_array( $column, array( 'status', 'level', 'included', 'object_type', 'subtype', 'action', 'conflict', 'confirmed', 'id' ), true ) ) {
+			if ( ! in_array( $column, array( 'status', 'level', 'included', 'object_type', 'subtype', 'action', 'conflict', 'confirmed', 'id', 'owner' ), true ) ) {
 				continue;
 			}
 			if ( is_array( $value ) ) {
@@ -499,8 +546,8 @@ final class Jobs {
 	 * @return array<string, mixed>
 	 */
 	private static function hydrate_item( array $row ): array {
-		foreach ( array( 'id', 'job_id', 'source_id', 'level', 'position', 'target_id' ) as $int ) {
-			$row[ $int ] = (int) $row[ $int ];
+		foreach ( array( 'id', 'job_id', 'source_id', 'level', 'position', 'target_id', 'owner' ) as $int ) {
+			$row[ $int ] = (int) ( $row[ $int ] ?? 0 );
 		}
 		foreach ( array( 'included', 'conflict', 'confirmed' ) as $flag ) {
 			$row[ $flag ] = (bool) (int) $row[ $flag ];

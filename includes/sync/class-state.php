@@ -95,7 +95,16 @@ final class State {
 			$state['file']                     = Media::describe( $id, $hashes );
 		}
 
-		return $state;
+		/**
+		 * Filters a post's state, as both sites read it to export, compare,
+		 * hash and snapshot. Data a site derives or collects for itself (a
+		 * shop's stock and sales) can be left out here, so it is never
+		 * overwritten and never counts as a change.
+		 *
+		 * @param array<string, mixed> $state State.
+		 * @param \WP_Post             $post  Post.
+		 */
+		return (array) apply_filters( 'jcore_silta_post_state', $state, $post );
 	}
 
 	/**
@@ -172,13 +181,35 @@ final class State {
 	 * Hashes the parts of a state a sync can change. IDs and timestamps are
 	 * left out, so the hash says whether the content changed.
 	 *
+	 * A taxonomy with no terms counts as absent: a state lists every taxonomy
+	 * registered for its post type, and a taxonomy that exists on only one
+	 * site (or appears later, like a WooCommerce attribute) must not change
+	 * the hash of a post that has no terms in it.
+	 *
 	 * @param array<string, mixed> $state State.
 	 *
 	 * @return string
 	 */
 	public static function hash( array $state ): string {
+		if ( isset( $state['terms'] ) && is_array( $state['terms'] ) ) {
+			$state['terms'] = array_filter( $state['terms'], static fn( $ids ): bool => ! empty( $ids ) );
+		}
+
+		return self::legacy_hash( $state );
+	}
+
+	/**
+	 * Hashes a state the way earlier versions did, keeping empty term sets.
+	 * Mappings stored by those versions hold these hashes; hash_matches()
+	 * accepts them so an upgrade doesn't flag every synced object as changed.
+	 *
+	 * @param array<string, mixed> $state State.
+	 *
+	 * @return string
+	 */
+	public static function legacy_hash( array $state ): string {
 		$parts = $state;
-		unset( $parts['id'], $parts['key'], $parts['guid'], $parts['modified_gmt'], $parts['refs'], $parts['origins'], $parts['hash'], $parts['title'], $parts['meta_groups'], $parts['group_labels'], $parts['unresolved'], $parts['depth'] );
+		unset( $parts['id'], $parts['key'], $parts['guid'], $parts['modified_gmt'], $parts['refs'], $parts['origins'], $parts['hash'], $parts['title'], $parts['meta_groups'], $parts['group_labels'], $parts['unresolved'], $parts['depth'], $parts['companions'], $parts['extra'] );
 
 		if ( isset( $parts['meta'] ) && is_array( $parts['meta'] ) ) {
 			ksort( $parts['meta'] );
@@ -191,6 +222,19 @@ final class State {
 		}
 
 		return sha1( (string) wp_json_encode( $parts ) );
+	}
+
+	/**
+	 * Says whether a stored hash still describes a state, in either the
+	 * current or the legacy form.
+	 *
+	 * @param string               $stored Hash stored at the last sync.
+	 * @param array<string, mixed> $state  Current state.
+	 *
+	 * @return bool
+	 */
+	public static function hash_matches( string $stored, array $state ): bool {
+		return $stored === self::hash( $state ) || $stored === self::legacy_hash( $state );
 	}
 
 	/**

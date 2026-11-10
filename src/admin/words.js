@@ -158,6 +158,8 @@ export function matchMethodLabel( method ) {
 		clone: __( 'the same ID and title', 'jcore-silta' ),
 		title: __( 'the same title', 'jcore-silta' ),
 		manual: __( 'your choice', 'jcore-silta' ),
+		attributes: __( 'the same product and attributes', 'jcore-silta' ),
+		sku: __( 'the same product and SKU', 'jcore-silta' ),
 	};
 	return labels[ method ] || method;
 }
@@ -355,6 +357,7 @@ export function subtypeLabel( subtype, typeLabels = {} ) {
 		wp_block: __( 'Pattern', 'jcore-silta' ),
 		nav_menu: __( 'Menu', 'jcore-silta' ),
 		gf_form: __( 'Form', 'jcore-silta' ),
+		product_variation: __( 'Variation', 'jcore-silta' ),
 		category: __( 'Category', 'jcore-silta' ),
 		post_tag: __( 'Tag', 'jcore-silta' ),
 	};

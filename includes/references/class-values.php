@@ -23,8 +23,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Values {
 
 	/**
-	 * Maps the IDs in a raw meta value: a number, or a serialized list of them.
-	 * Anything else (URLs, text) is left alone.
+	 * A list of IDs separated by commas, as WooCommerce stores some ID lists
+	 * (`_product_image_gallery`, coupons' `product_ids`).
+	 */
+	private const LIST = '/^\d+(?:\s*,\s*\d+)+$/';
+
+	/**
+	 * Maps the IDs in a raw meta value: a number, a list of numbers separated
+	 * by commas, or a serialized list of them. Anything else (URLs, text) is
+	 * left alone.
 	 *
 	 * @param string   $raw   Raw value.
 	 * @param string   $kind  Kind of the IDs.
@@ -43,6 +50,10 @@ final class Values {
 			return null === $id ? '' : (string) $id;
 		}
 
+		if ( 1 === preg_match( self::LIST, $raw ) ) {
+			return self::map_list( $raw, $kind, $visit );
+		}
+
 		if ( Replacer::is_serialized( $raw ) && Meta_Writer::valid_value( $raw ) ) {
 			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize, WordPress.PHP.NoSilencedErrors.Discouraged -- Validated raw data; malformed legacy values return false and no classes are allowed.
 			$value = @unserialize(
@@ -58,6 +69,45 @@ final class Values {
 		}
 
 		return $raw;
+	}
+
+	/**
+	 * Maps a list of IDs separated by commas. When every ID resolves, the
+	 * separators stay exactly as they were; a dropped ID is removed from the
+	 * list, which is then joined with plain commas.
+	 *
+	 * @param string   $raw   List, already checked against LIST.
+	 * @param string   $kind  Kind of the IDs.
+	 * @param callable $visit Visitor.
+	 *
+	 * @return string
+	 */
+	private static function map_list( string $raw, string $kind, callable $visit ): string {
+		$dropped = false;
+		$mapped  = (string) preg_replace_callback(
+			'/\d+/',
+			static function ( array $digits ) use ( $kind, $visit, &$dropped ): string {
+				$id = (int) $digits[0];
+				if ( 0 === $id ) {
+					return $digits[0];
+				}
+				$new = $visit( $kind, $id );
+				if ( null === $new ) {
+					$dropped = true;
+
+					return '';
+				}
+
+				return (string) $new;
+			},
+			$raw
+		);
+
+		if ( ! $dropped ) {
+			return $mapped;
+		}
+
+		return implode( ',', array_filter( array_map( 'trim', explode( ',', $mapped ) ), static fn( string $id ): bool => '' !== $id ) );
 	}
 
 	/**

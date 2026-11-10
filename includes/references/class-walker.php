@@ -96,6 +96,18 @@ final class Walker {
 		}
 
 		self::translations( $record, 'post', $visit );
+
+		/**
+		 * Filters a post's state after its references were visited, so an
+		 * integration can visit the IDs in data of its own (a product bundle's
+		 * items). The source collects them as dependencies, the target remaps
+		 * them; a visitor returns the ID to keep, or null when the object
+		 * isn't on this site.
+		 *
+		 * @param array<string, mixed> $record Post state.
+		 * @param callable             $visit  Visitor: ( string $kind, int $id ): ?int.
+		 */
+		$record = (array) apply_filters( 'jcore_silta_walk_post', $record, $visit );
 	}
 
 	/**

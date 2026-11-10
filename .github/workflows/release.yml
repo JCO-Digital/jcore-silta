@@ -10,9 +10,25 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its run still in progress: only the
+# latest commit's result matters. Runs on main are grouped by commit, so a
+# release is never cancelled halfway.
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Real syncs between two sites (integration.yml); everything below waits
+  # for them, so a commit that breaks syncing is never linted, built or
+  # released.
+  integration:
+    name: Integration
+    uses: ./.github/workflows/integration.yml
+    secrets: inherit
+
   check:
     name: Lint, build and Plugin Check
+    needs: integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

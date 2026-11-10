@@ -422,6 +422,9 @@ final class Jobs_Controller extends Controller {
 		}
 		if ( ! empty( $changes ) ) {
 			Jobs::update_items( (int) $job['id'], $where, $changes );
+			if ( isset( $changes['included'] ) && isset( $where['id'] ) ) {
+				Jobs::include_companions( (int) $job['id'], $where['id'], $changes['included'] );
+			}
 		}
 
 		return rest_ensure_response( array( 'updated' => true ) );
@@ -459,6 +462,9 @@ final class Jobs_Controller extends Controller {
 		}
 		if ( ! empty( $changes ) ) {
 			Jobs::update_item( (int) $item['id'], $changes );
+			if ( isset( $changes['included'] ) ) {
+				Jobs::include_companions( (int) $job['id'], array( (int) $item['id'] ), $changes['included'] );
+			}
 		}
 
 		if ( $request->has_param( 'override' ) ) {

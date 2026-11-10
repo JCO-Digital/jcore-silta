@@ -218,8 +218,9 @@ final class Source_Controller extends Controller {
 		foreach ( (array) $result['items'] as $item ) {
 			if ( is_string( $item['hash'] ?? null ) ) {
 				$items[] = array(
-					'key'  => Util::key( 'post', (int) $item['id'] ),
-					'hash' => $item['hash'],
+					'key'         => Util::key( 'post', (int) $item['id'] ),
+					'hash'        => $item['hash'],
+					'legacy_hash' => (string) ( $item['legacy_hash'] ?? '' ),
 				);
 			}
 		}
@@ -242,7 +243,7 @@ final class Source_Controller extends Controller {
 					'synced_at' => (string) ( $status['synced_at'] ?? '' ),
 				);
 			}
-			unset( $result['items'][ $index ]['hash'] );
+			unset( $result['items'][ $index ]['hash'], $result['items'][ $index ]['legacy_hash'] );
 		}
 
 		return $result;

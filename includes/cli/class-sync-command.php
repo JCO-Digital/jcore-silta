@@ -512,10 +512,11 @@ final class Sync_Command {
 				'conflict' => $item['conflict'] ? ( $item['confirmed'] ? 'overwrite' : 'skip' ) : '',
 				'changes'  => implode( ', ', array_slice( (array) ( $plan['changed'] ?? array() ), 0, 6 ) ) . ( count( (array) ( $plan['changed'] ?? array() ) ) > 6 ? '…' : '' ),
 				'problems' => implode( '; ', array_merge( array_values( (array) ( $plan['errors'] ?? array() ) ), array_map( static fn( $m ) => 'missing ' . $m['key'], (array) ( $plan['missing'] ?? array() ) ) ) ),
+				'notes'    => implode( '; ', array_filter( (array) ( $plan['notes'] ?? array() ), 'is_string' ) ),
 			);
 		}
 
-		Utils\format_items( 'table', $rows, array( 'key', 'type', 'title', 'level', 'action', 'target', 'conflict', 'changes', 'problems' ) );
+		Utils\format_items( 'table', $rows, array( 'key', 'type', 'title', 'level', 'action', 'target', 'conflict', 'changes', 'problems', 'notes' ) );
 	}
 
 	/**

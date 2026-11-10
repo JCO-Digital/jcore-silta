@@ -10,9 +10,12 @@
  * when they are already there.
  *
  * On staging it creates "Silta-paketti", a bundle of Silta-muki (exactly one)
- * and Silta-paita (optional, one or two). The bundled items live in the
- * extension's own tables (woocommerce_bundled_items and
- * woocommerce_bundled_itemmeta), not in post meta.
+ * and Silta-paita (optional, one or two). The shirt is priced individually
+ * with a 10 % discount, and only its red variation is allowed (and the
+ * default), so the item meta holds a variation ID and an attribute slug.
+ * The bundled items live in the extension's own tables
+ * (woocommerce_bundled_items and woocommerce_bundled_itemmeta), not in post
+ * meta.
  *
  *   docker compose run --rm cli-staging wp eval-file /seed/woocommerce/woocommerce-product-bundles.php staging --user=admin
  *
@@ -62,9 +65,15 @@ if ( 'staging' === $site ) {
 				'product_id' => (int) $seed['products']['shirt'],
 				'menu_order' => 1,
 				'meta_data'  => array(
-					'quantity_min' => 1,
-					'quantity_max' => 2,
-					'optional'     => 'yes',
+					'quantity_min'                 => 1,
+					'quantity_max'                 => 2,
+					'optional'                     => 'yes',
+					'priced_individually'          => 'yes',
+					'discount'                     => 10,
+					'override_variations'          => 'yes',
+					'allowed_variations'           => array( (int) $seed['variations']['red'] ),
+					'override_default_variation_attributes' => 'yes',
+					'default_variation_attributes' => array( 'pa_vari' => 'punainen' ),
 				),
 			),
 		)
