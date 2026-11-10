@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.4.4
+Stable tag: 0.5.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -107,7 +107,31 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.4.4 (2026-11-09) =
+= 0.5.0 (2026-11-10) =
+
+* Feature: woocommerce - sync Product Bundles with their items
+* Feature: woocommerce - let extension product types refresh their own price
+* Feature: woocommerce - refuse products of a type the target doesn't have
+* Feature: admin - show the diff sections integrations add
+* Feature: sync - let integrations walk, diff and write data of their own
+* Feature: cli - show plan notes in the sync plan
+* Feature: woocommerce - sync products with their variations, and coupons
+* Feature: admin - tick companions with their owner and show plan notes
+* Feature: sync - add integration hooks and companion posts
+* Feature: sync - remap ID lists separated by commas in reference meta
+* Fix: woocommerce - refresh a product's lookup row through its own data store
+* Fix: dev - keep production's divergence a second newer than staging's
+* Fix: sync - ignore empty term sets when comparing and hashing posts
+* Fix: woocommerce - write a synced product's active price
+* Fix: sync - never offer WooCommerce orders, refunds or push tokens
+* Documentation: design - record the Product Bundles decisions
+* Documentation: design - record the WooCommerce decisions
+* Test: integration - check WooCommerce Product Bundles
+* Test: integration - check WooCommerce products, variations and coupons
+* Test: unit - cover the WooCommerce integration
+* CI: lint, build and release only after the integration tests pass
+
+= v0.4.4 (2026-11-09) =
 
 * Performance: dev - run WP-CLI in idle CLI containers instead of one per command
 * CI: integration - cancel a run when a newer commit lands on the same ref
