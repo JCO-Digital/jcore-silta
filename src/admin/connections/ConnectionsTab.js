@@ -7,6 +7,7 @@ import ErrorNotice from '../components/ErrorNotice';
 import { formatDate, fromUnix } from '../words';
 import IncomingKeys from './IncomingKeys';
 import OutgoingConnections from './OutgoingConnections';
+import PairingSetup from './PairingSetup';
 import ThisSite from './ThisSite';
 
 /**
@@ -48,7 +49,7 @@ export default function ConnectionsTab( { onChanged } ) {
 			{ data.cloned && (
 				<CloneNotice cloned={ data.cloned } onDismissed={ refresh } />
 			) }
-			<ThisSite data={ data } onChanged={ refresh } />
+			<PairingSetup onChanged={ refresh } />
 			<OutgoingConnections
 				connections={ data.connections }
 				onChanged={ refresh }
@@ -58,6 +59,7 @@ export default function ConnectionsTab( { onChanged } ) {
 				tokens={ data.tokens }
 				onChanged={ refresh }
 			/>
+			<ThisSite data={ data } onChanged={ refresh } />
 		</div>
 	);
 }

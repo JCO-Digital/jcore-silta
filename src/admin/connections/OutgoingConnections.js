@@ -3,10 +3,8 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
-	CheckboxControl,
 	Flex,
 	Modal,
-	TextareaControl,
 	TextControl,
 } from '@wordpress/components';
 import { useState } from '@wordpress/element';
@@ -36,12 +34,12 @@ export default function OutgoingConnections( { connections, onChanged } ) {
 			<CardBody>
 				<p className="description">
 					{ __(
-						'From this site you can push to or pull from these sites, as far as they allow it.',
+						'Sites this site has connected to. You can push to or pull from them, depending on what each site allows. To add one, use “Connect with a pairing string” above.',
 						'jcore-silta'
 					) }
 				</p>
 				{ connections.length === 0 ? (
-					<p>{ __( 'No connections yet.', 'jcore-silta' ) }</p>
+					<p>{ __( 'No connected sites yet.', 'jcore-silta' ) }</p>
 				) : (
 					<ul className="jcore-silta-list">
 						{ connections.map( ( connection ) => (
@@ -53,7 +51,6 @@ export default function OutgoingConnections( { connections, onChanged } ) {
 						) ) }
 					</ul>
 				) }
-				<AddConnection onAdded={ onChanged } />
 			</CardBody>
 		</Card>
 	);
@@ -325,130 +322,5 @@ function EditConnection( { connection, onClose, onSaved } ) {
 				</Flex>
 			</form>
 		</Modal>
-	);
-}
-
-/**
- * Pairs with another site using its pairing string.
- *
- * @param {Object}                       props         Props.
- * @param {(...args: unknown[]) => void} props.onAdded Called after pairing.
- * @return {Element} Form.
- */
-function AddConnection( { onAdded } ) {
-	const [ pairing, setPairing ] = useState( '' );
-	const [ label, setLabel ] = useState( '' );
-	const [ hasAuth, setHasAuth ] = useState( false );
-	const [ authUser, setAuthUser ] = useState( '' );
-	const [ authPass, setAuthPass ] = useState( '' );
-	const [ isBusy, setIsBusy ] = useState( false );
-	const [ error, setError ] = useState( '' );
-	const [ added, setAdded ] = useState( '' );
-
-	const connect = async ( event ) => {
-		event.preventDefault();
-		setIsBusy( true );
-		setError( '' );
-		setAdded( '' );
-		try {
-			const connection = await post( '/connections', {
-				pairing: pairing.trim(),
-				label,
-				auth_user: hasAuth ? authUser : '',
-				auth_pass: hasAuth ? authPass : '',
-			} );
-			setPairing( '' );
-			setLabel( '' );
-			setAuthUser( '' );
-			setAuthPass( '' );
-			setHasAuth( false );
-			setAdded( connection.label );
-			onAdded();
-		} catch ( e ) {
-			setError( errorMessage( e ) );
-		} finally {
-			setIsBusy( false );
-		}
-	};
-
-	return (
-		<form className="jcore-silta-form jcore-silta-add" onSubmit={ connect }>
-			<h3>{ __( 'Add a connection', 'jcore-silta' ) }</h3>
-			<p className="description">
-				{ __(
-					'On the other site, open Tools → JCORE Silta → Connections and choose “Allow a site to connect”. Paste the pairing string it shows here.',
-					'jcore-silta'
-				) }
-			</p>
-			<ErrorNotice error={ error } onRemove={ () => setError( '' ) } />
-			{ added && (
-				<p className="jcore-silta-success" role="status">
-					{ sprintf(
-						/* translators: %s: site name. */
-						__( 'Connected to %s.', 'jcore-silta' ),
-						added
-					) }
-				</p>
-			) }
-			<TextareaControl
-				__nextHasNoMarginBottom
-				label={ __( 'Pairing string', 'jcore-silta' ) }
-				className="jcore-silta-code-input"
-				rows={ 3 }
-				value={ pairing }
-				onChange={ setPairing }
-			/>
-			<TextControl
-				__next40pxDefaultSize
-				__nextHasNoMarginBottom
-				label={ __( 'Name (optional)', 'jcore-silta' ) }
-				help={ __(
-					'Defaults to the other site’s name.',
-					'jcore-silta'
-				) }
-				value={ label }
-				onChange={ setLabel }
-			/>
-			<CheckboxControl
-				__nextHasNoMarginBottom
-				label={ __(
-					'The other site is behind a password (basic auth)',
-					'jcore-silta'
-				) }
-				checked={ hasAuth }
-				onChange={ setHasAuth }
-			/>
-			{ hasAuth && (
-				<div className="jcore-silta-form__indent">
-					<TextControl
-						__next40pxDefaultSize
-						__nextHasNoMarginBottom
-						label={ __( 'User', 'jcore-silta' ) }
-						autoComplete="off"
-						value={ authUser }
-						onChange={ setAuthUser }
-					/>
-					<TextControl
-						__next40pxDefaultSize
-						__nextHasNoMarginBottom
-						type="password"
-						label={ __( 'Password', 'jcore-silta' ) }
-						autoComplete="new-password"
-						value={ authPass }
-						onChange={ setAuthPass }
-					/>
-				</div>
-			) }
-			<Button
-				__next40pxDefaultSize
-				variant="primary"
-				type="submit"
-				isBusy={ isBusy }
-				disabled={ ! pairing.trim() || isBusy }
-				accessibleWhenDisabled
-			>
-				{ __( 'Connect', 'jcore-silta' ) }
-			</Button>
-		</form>
 	);
 }
