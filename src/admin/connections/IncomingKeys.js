@@ -5,16 +5,14 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Flex,
-	TextControl,
 	ToggleControl,
 } from '@wordpress/components';
 import { useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
-import { errorMessage, patch, post, remove } from '../api';
+import { errorMessage, patch, remove } from '../api';
 import Badge from '../components/Badge';
 import ConfirmModal from '../components/ConfirmModal';
-import CopyBox from '../components/CopyBox';
 import ErrorNotice from '../components/ErrorNotice';
 import { formatDate, fromUnix, relativeDate } from '../words';
 
@@ -38,12 +36,12 @@ export default function IncomingKeys( { keys, tokens, onChanged } ) {
 			<CardBody>
 				<p className="description">
 					{ __(
-						'These sites can pull content from this site or push content to it. They act as the administrator who allowed them.',
+						'Sites that connected using an invitation from this site. They can pull from or push to this site, depending on what you allowed, using the account of the person who created the invitation. To add one, use “Create an invitation” above.',
 						'jcore-silta'
 					) }
 				</p>
 				{ keys.length === 0 ? (
-					<p>{ __( 'No sites yet.', 'jcore-silta' ) }</p>
+					<p>{ __( 'No sites have access yet.', 'jcore-silta' ) }</p>
 				) : (
 					<ul className="jcore-silta-list">
 						{ keys.map( ( key ) => (
@@ -56,7 +54,6 @@ export default function IncomingKeys( { keys, tokens, onChanged } ) {
 					</ul>
 				) }
 				<PendingTokens tokens={ tokens } onChanged={ onChanged } />
-				<AllowSite onCreated={ onChanged } />
 			</CardBody>
 		</Card>
 	);
@@ -244,7 +241,13 @@ function PendingTokens( { tokens, onChanged } ) {
 
 	return (
 		<div className="jcore-silta-pending">
-			<h3>{ __( 'Waiting to be used', 'jcore-silta' ) }</h3>
+			<h3>{ __( 'Unused invitations', 'jcore-silta' ) }</h3>
+			<p className="description">
+				{ __(
+					'Invitations created on this site that haven’t been used yet. Each one expires 30 minutes after it was created. Cancel any you no longer need.',
+					'jcore-silta'
+				) }
+			</p>
 			<ErrorNotice error={ error } onRemove={ () => setError( '' ) } />
 			<ul className="jcore-silta-list">
 				{ tokens.map( ( token ) => (
@@ -274,118 +277,5 @@ function PendingTokens( { tokens, onChanged } ) {
 				) ) }
 			</ul>
 		</div>
-	);
-}
-
-/**
- * Creates a pairing string for another site.
- *
- * @param {Object}                       props           Props.
- * @param {(...args: unknown[]) => void} props.onCreated Called after creating it.
- * @return {Element} Form.
- */
-function AllowSite( { onCreated } ) {
-	const [ label, setLabel ] = useState( '' );
-	const [ canRead, setCanRead ] = useState( false );
-	const [ canWrite, setCanWrite ] = useState( false );
-	const [ pairing, setPairing ] = useState( null );
-	const [ isBusy, setIsBusy ] = useState( false );
-	const [ error, setError ] = useState( '' );
-
-	const create = async ( event ) => {
-		event.preventDefault();
-		setIsBusy( true );
-		setError( '' );
-		try {
-			const scopes = [];
-			if ( canRead ) {
-				scopes.push( 'read' );
-			}
-			if ( canWrite ) {
-				scopes.push( 'write' );
-			}
-			setPairing( await post( '/keys/tokens', { label, scopes } ) );
-			setLabel( '' );
-			setCanRead( false );
-			setCanWrite( false );
-			onCreated();
-		} catch ( e ) {
-			setError( errorMessage( e ) );
-		} finally {
-			setIsBusy( false );
-		}
-	};
-
-	return (
-		<form className="jcore-silta-form jcore-silta-add" onSubmit={ create }>
-			<h3>{ __( 'Allow a site to connect', 'jcore-silta' ) }</h3>
-			<p className="description">
-				{ __(
-					'This creates a pairing string. Paste it on the other site under Tools → JCORE Silta → Connections → Add a connection.',
-					'jcore-silta'
-				) }
-			</p>
-			<ErrorNotice error={ error } onRemove={ () => setError( '' ) } />
-			{ pairing && (
-				<div className="jcore-silta-pairing" role="status">
-					<CopyBox
-						value={ pairing.pairing }
-						label={ __( 'Pairing string', 'jcore-silta' ) }
-					/>
-					<p>
-						{ __(
-							'Paste this on the other site within 30 minutes. It works once.',
-							'jcore-silta'
-						) }
-					</p>
-					<Button variant="link" onClick={ () => setPairing( null ) }>
-						{ __( 'Done', 'jcore-silta' ) }
-					</Button>
-				</div>
-			) }
-			<TextControl
-				__next40pxDefaultSize
-				__nextHasNoMarginBottom
-				label={ __( 'Name of the other site', 'jcore-silta' ) }
-				help={ __( 'For example “Staging”.', 'jcore-silta' ) }
-				value={ label }
-				onChange={ setLabel }
-			/>
-			<CheckboxControl
-				__nextHasNoMarginBottom
-				label={ __( 'Can pull from this site', 'jcore-silta' ) }
-				help={ __( 'It can read content from here.', 'jcore-silta' ) }
-				checked={ canRead }
-				onChange={ setCanRead }
-			/>
-			<CheckboxControl
-				__nextHasNoMarginBottom
-				label={ __( 'Can push to this site', 'jcore-silta' ) }
-				help={ __(
-					'It can create and change content here, as you.',
-					'jcore-silta'
-				) }
-				checked={ canWrite }
-				onChange={ setCanWrite }
-			/>
-			<Button
-				__next40pxDefaultSize
-				variant="primary"
-				type="submit"
-				isBusy={ isBusy }
-				disabled={ ( ! canRead && ! canWrite ) || isBusy }
-				accessibleWhenDisabled
-			>
-				{ __( 'Create a pairing string', 'jcore-silta' ) }
-			</Button>
-			{ ! canRead && ! canWrite && (
-				<p className="description">
-					{ __(
-						'Choose what the other site may do first.',
-						'jcore-silta'
-					) }
-				</p>
-			) }
-		</form>
 	);
 }

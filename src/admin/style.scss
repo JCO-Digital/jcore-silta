@@ -154,6 +154,53 @@ $jcore-silta-red: #d63638;
 	border-top: 1px solid $jcore-silta-border;
 }
 
+/* Connections: create invitation vs connect */
+
+.jcore-silta-pairing-guide {
+	margin: 12px 0 0;
+	padding-left: 1.25em;
+	color: $jcore-silta-gray;
+
+	li {
+		margin-bottom: 8px;
+	}
+
+	strong {
+		color: #1d2327;
+	}
+}
+
+.jcore-silta-pairing-actions {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+	margin-top: 0;
+	align-items: start;
+
+	@media (max-width: 782px) {
+		grid-template-columns: 1fr;
+	}
+}
+
+.jcore-silta-pairing-actions__card .components-card__header {
+	align-items: center;
+}
+
+.jcore-silta-pairing-step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	border-radius: 50%;
+	background: $jcore-silta-blue;
+	color: #fff;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+}
+
 /* Search-replace rules */
 
 .jcore-silta-rules {
