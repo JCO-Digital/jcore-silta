@@ -419,6 +419,79 @@ else
 	echo "skip WooCommerce is not active on both sites"
 fi
 
+echo "== Large jobs"
+# A zero in a field that holds an ID (no primary category was picked) is not a
+# reference: it used to make the whole post malformed for the target.
+zero=$(wp staging post create --post_type=post --post_status=publish --post_title="Nolla viitteenä" --post_name=silta-zero-reference --porcelain)
+wp staging post meta update "$zero" _yoast_wpseo_primary_category 0 >/dev/null
+# An image whose file name has accented letters.
+php -r '$i = imagecreatetruecolor( 600, 400 ); imagefill( $i, 0, 0, imagecolorallocate( $i, 40, 120, 200 ) ); imagejpeg( $i, "/tmp/silta-accent.jpg", 85 );'
+docker compose exec -T cli-staging sh -c 'cat > "/tmp/kesän-näkymä.jpg"' </tmp/silta-accent.jpg
+accent=$(wp staging media import "/tmp/kesän-näkymä.jpg" --title="Näkymä" --porcelain | tail -1)
+second=$(wp staging post create --post_type=post --post_status=publish --post_title="Aksenttikuva" --post_name=silta-accent-image --porcelain)
+wp staging post meta update "$second" _thumbnail_id "$accent" >/dev/null
+out=$(wp staging silta push "$PROD" --post="$zero,$second" --yes)
+contains "both posts and the image are created" "3 created" "$out"
+pzero=$(post_id production silta-zero-reference)
+check "the zero arrived as it was" "0" "$(wp production post meta get "$pzero" _yoast_wpseo_primary_category)"
+psecond=$(post_id production silta-accent-image)
+check "the image arrived under its own name" "$(wp staging eval "echo basename( get_attached_file( $accent ) );")" "$(wp production eval "echo basename( (string) get_attached_file( get_post_thumbnail_id( $psecond ) ) );")"
+check "its file is there" "yes" "$(wp production eval "echo file_exists( (string) get_attached_file( get_post_thumbnail_id( $psecond ) ) ) ? 'yes' : 'no';")"
+
+# Only one request works on a job at a time: a second one is told to wait,
+# and gets the job once the first lets go.
+job=$(last_job)
+out=$(wp staging eval "
+\$id = (int) '$job';
+Jcore\\Silta\\Jobs\\Jobs::update( \$id, array( 'status' => 'running' ) );
+echo Jcore\\Silta\\Jobs\\Jobs::claim( \$id, 'another-request' ) ? 'claimed' : 'not claimed';
+\$busy = Jcore\\Silta\\Jobs\\Runner::load( \$id )->run( 1.0 );
+echo ' ', is_wp_error( \$busy ) ? \$busy->get_error_code() : 'ran';
+Jcore\\Silta\\Jobs\\Jobs::release( \$id, 'another-request' );
+\$free = Jcore\\Silta\\Jobs\\Runner::load( \$id )->run( 5.0 );
+echo ' ', is_wp_error( \$free ) ? \$free->get_error_code() : \$free['job']['status'];
+")
+check "a second request waits, then the job carries on" "claimed jcore_silta_busy done" "$out"
+
+# Undo in slices: a request that is out of time undoes one change and says
+# how many are left; the next request carries on.
+uuid=$(wp staging eval "echo Jcore\\Silta\\Jobs\\Jobs::get( (int) '$job' )['uuid'];")
+out=$(wp production eval "\$slice = Jcore\\Silta\\Sync\\Snapshots::undo( '$uuid', microtime( true ) ); echo \$slice['removed'], ' removed, ', \$slice['remaining'], ' left';")
+check "an undo out of time undoes one change" "1 removed, 2 left" "$out"
+out=$(wp staging silta undo "$job" --yes)
+contains "the next request undoes the rest" "removed 2" "$out"
+check "the first post is gone" "trash" "$(wp production post get "$pzero" --field=post_status)"
+check "the second post is gone" "trash" "$(wp production post get "$psecond" --field=post_status)"
+check "the sync is undone" "undone" "$(wp staging silta jobs --format=json | php -r 'echo json_decode( stream_get_contents( STDIN ), true )[0]["status"] ?? "";')"
+
+# Media translations share one file, as Polylang makes them: a copy per
+# language on the same file. The second copy brings no files, and undo
+# removes the file with the last attachment that uses it.
+for site in staging production; do
+	wp "$site" option patch update polylang media_support 1 >/dev/null
+done
+php -r '$i = imagecreatetruecolor( 800, 600 ); imagefill( $i, 0, 0, imagecolorallocate( $i, 60, 160, 90 ) ); imagejpeg( $i, "/tmp/silta-shared.jpg", 85 );'
+docker compose exec -T cli-staging sh -c 'cat > /tmp/silta-jaettu-kuva.jpg' </tmp/silta-shared.jpg
+shared=$(wp staging media import /tmp/silta-jaettu-kuva.jpg --title="Jaettu kuva" --porcelain | tail -1)
+wp staging eval "pll_set_post_language( $shared, 'fi' );" >/dev/null
+shared_en=$(wp staging eval "\$posts = PLL()->model->post; echo method_exists( \$posts, 'create_media_translation' ) ? \$posts->create_media_translation( $shared, 'en' ) : PLL()->posts->create_media_translation( $shared, 'en' );")
+check "staging's two copies are one file" "$(wp staging post meta get "$shared" _wp_attached_file)" "$(wp staging post meta get "$shared_en" _wp_attached_file)"
+holder=$(wp staging post create --post_type=post --post_status=publish --post_title="Jaettu kuva" --post_name=silta-shared-image --porcelain)
+wp staging post meta update "$holder" _thumbnail_id "$shared" >/dev/null
+wp staging silta push "$PROD" --post="$holder" --deep --yes >/dev/null
+pholder=$(post_id production silta-shared-image)
+pshared=$(wp production post meta get "$pholder" _thumbnail_id)
+pshared_en=$(wp production eval "echo (int) pll_get_post( $pshared, 'en' );")
+[ "$pshared_en" -gt 0 ] && [ "$pshared_en" != "$pshared" ] && echo "ok   the English copy arrived as an attachment of its own (#$pshared_en)" || { echo "FAIL the English copy did not arrive (got: $pshared_en)"; failures=$((failures + 1)); }
+pfile=$(wp production post meta get "$pshared" _wp_attached_file)
+check "both copies are one file on production too" "$pfile" "$(wp production post meta get "$pshared_en" _wp_attached_file)"
+check "no second copy of the file was made" "no" "$(wp production eval "\$file = (string) get_attached_file( $pshared_en ); echo file_exists( preg_replace( '/\\.jpg\$/', '-1.jpg', \$file ) ) ? 'yes' : 'no';")"
+check "the shared file is on disk" "yes" "$(wp production eval "echo file_exists( (string) get_attached_file( $pshared_en ) ) ? 'yes' : 'no';")"
+job=$(last_job)
+wp staging silta undo "$job" --yes >/dev/null
+check "undo removes both copies" "gone gone" "$(wp production eval "echo get_post( $pshared ) ? 'here' : 'gone', ' ', get_post( $pshared_en ) ? 'here' : 'gone';")"
+check "and the file with the last of them" "no" "$(wp production eval "echo file_exists( wp_get_upload_dir()['basedir'] . '/$pfile' ) ? 'yes' : 'no';")"
+
 echo "== Clone detection"
 wp production eval 'update_option( "jcore_silta_site", array( "uuid" => wp_generate_uuid4(), "home" => sha1( "copied-from-elsewhere" ), "seen" => "" ) );' >/dev/null
 wp production option get blogname >/dev/null
