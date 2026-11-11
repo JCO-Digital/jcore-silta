@@ -4,7 +4,7 @@ Tags: jcore, sync, staging, migration, content
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.6.0
+Stable tag: 0.7.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -108,7 +108,18 @@ Silta notices the copy, switches off the connections that came with it, and stag
 
 == Changelog ==
 
-= 0.6.0 (2026-11-10) =
+= 0.7.0 (2026-11-11) =
+
+* Feature: media - let media translations share one file, as Polylang makes them
+* Feature: jobs - finish large syncs within the server's time limits, one request at a time
+* Fix: polylang - sync each language version as it is on the source
+* Fix: media - stop sending images again that the other site already has
+* Fix: sync - keep posts with a zero in an ID field, and references between posts of one sync
+* Performance: sync - send an attachment's files in one request, and read and write less per batch
+* Documentation: design - record the decisions for large syncs, Polylang and shared media files
+* Test: integration - check large-sync behaviour between the two dev sites
+
+= v0.6.0 (2026-11-10) =
 
 * Feature: admin - clarify connection invite and pairing flow
 
