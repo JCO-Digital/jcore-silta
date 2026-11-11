@@ -171,6 +171,26 @@ final class MediaTest extends TestCase {
 		$this->error( 'jcore_silta_file_type', Media::prepare( $this->record(), 0, 'peer-a' ) );
 	}
 
+	public function test_accented_file_names_are_accepted_whatever_the_site_sanitizer_does(): void {
+		$path = '2018/11/kesän-näkymä.png';
+		foreach ( array( false, true ) as $strips ) {
+			// Some sites' sanitize_file_name() turns "ä" into "a".
+			$GLOBALS['jcore_silta_media_test_strip_accents'] = $strips;
+			try {
+				$prepared = Media::prepare( $this->record( $path ), 0, 'peer-a' );
+				$this->assertIsArray( $prepared, $strips ? 'sanitizer strips accents' : 'sanitizer keeps accents' );
+				$this->assertSame( $path, $prepared['main'] );
+			} finally {
+				unset( $GLOBALS['jcore_silta_media_test_strip_accents'] );
+			}
+		}
+
+		// Still nothing else gets through with them.
+		foreach ( array( '2018/11/näkymä kesällä.png', '2018/11/näkymä.php.png', '../näkymä.png' ) as $bad ) {
+			$this->assertInstanceOf( WP_Error::class, Media::prepare( $this->record( $bad ), 0, 'peer-a' ), $bad );
+		}
+	}
+
 	public function test_prepare_checks_every_metadata_filename_and_auxiliary_kind(): void {
 		foreach ( array( '../outside.png', '.hidden.png', 'bad.php', 'image.svg', 'other.pdf' ) as $name ) {
 			$record                                       = $this->record();
@@ -259,9 +279,15 @@ final class MediaTest extends TestCase {
 		file_put_contents( $tmp, str_repeat( 'x', strlen( $this->png ) ) );
 		$this->error( 'jcore_silta_incomplete', Media::finalize( $transfer, 'peer-a', $record ) );
 		file_put_contents( $tmp, $this->png );
+		// Another attachment took the name meanwhile (a media translation with
+		// the same file): the received bytes get a free name, the other file stays.
 		mkdir( $this->dir . '/2026/10', 0777, true );
-		file_put_contents( $this->dir . '/' . $path, $this->png );
-		$this->error( 'jcore_silta_clash', Media::finalize( $transfer, 'peer-a', $record ) );
+		file_put_contents( $this->dir . '/' . $path, 'The other attachment' );
+		$finished = Media::finalize( $transfer, 'peer-a', $record );
+		$this->assertSame( '2026/10/photo-1.png', $finished['main'] );
+		$this->assertSame( array( $path => '2026/10/photo-1.png' ), $finished['map'] );
+		$this->assertSame( $this->png, file_get_contents( $this->dir . '/2026/10/photo-1.png' ) );
+		$this->assertSame( 'The other attachment', file_get_contents( $this->dir . '/' . $path ) );
 	}
 
 	public function test_existing_identical_files_are_never_reused(): void {

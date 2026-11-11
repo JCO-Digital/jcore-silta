@@ -532,9 +532,36 @@ namespace {
 		 * @return string
 		 */
 		function sanitize_file_name( string $name ): string {
+			if ( ! empty( $GLOBALS['jcore_silta_media_test_strip_accents'] ) ) {
+				$name = remove_accents( $name );
+			}
 			$clean = preg_replace( '/[\\x00-\\x20?<>:"\\\\|*]/', '', $name );
 			$clean = preg_replace( '/\\.(php|phtml|phar)\\./i', '.$1_.', $clean );
 			return trim( $clean, '.-_' );
+		}
+	}
+
+	if ( ! function_exists( 'remove_accents' ) ) {
+		/**
+		 * Stand-in for remove_accents(), for the letters the fixtures use.
+		 *
+		 * @param string $text Text.
+		 *
+		 * @return string
+		 */
+		function remove_accents( string $text ): string {
+			return strtr(
+				$text,
+				array(
+					'ä' => 'a',
+					'ö' => 'o',
+					'å' => 'a',
+					'Ä' => 'A',
+					'Ö' => 'O',
+					'Å' => 'A',
+					'é' => 'e',
+				)
+			);
 		}
 	}
 

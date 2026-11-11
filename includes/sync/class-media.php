@@ -489,6 +489,18 @@ final class Media {
 				return new WP_Error( 'jcore_silta_transfer_record', __( 'The transfer belongs to another attachment.', 'jcore-silta' ), array( 'status' => 403 ) );
 			}
 
+			// A file took one of the places since the transfer opened: another
+			// attachment of the same sync with the same file name. The bytes
+			// are here already, so they get a free name now, rather than being
+			// sent all over again.
+			foreach ( $manifest['files'] as $entry ) {
+				$target = self::upload_path( $entry['target'] );
+				if ( null !== $target && ( file_exists( $target ) || is_link( $target ) ) ) {
+					$manifest = self::renamed_manifest( $manifest );
+					break;
+				}
+			}
+
 			$map   = array();
 			$types = array();
 			// Validate every file before moving any bytes into public uploads.
@@ -763,6 +775,34 @@ final class Media {
 	}
 
 	/**
+	 * Gives the files of a transfer new names, when one of the planned names
+	 * was taken between prepare() and finalize().
+	 *
+	 * @param array<string, mixed> $manifest Manifest.
+	 *
+	 * @return array<string, mixed> Manifest with free targets.
+	 */
+	private static function renamed_manifest( array $manifest ): array {
+		$files = array();
+		$main  = '';
+		foreach ( $manifest['files'] as $entry ) {
+			$files[ $entry['source'] ] = $entry;
+			if ( $entry['target'] === $manifest['main'] ) {
+				$main = $entry['source'];
+			}
+		}
+		if ( '' === $main ) {
+			return $manifest;
+		}
+
+		$files             = self::rename( $files, $main, (array) $manifest['metadata'] );
+		$manifest['files'] = array_values( $files );
+		$manifest['main']  = $files[ $main ]['target'];
+
+		return $manifest;
+	}
+
+	/**
 	 * Loads a server-owned manifest and checks its owner and attachment.
 	 *
 	 * @param string $transfer  Transfer ID.
@@ -814,7 +854,11 @@ final class Media {
 			return null;
 		}
 		foreach ( explode( '/', $path ) as $part ) {
-			if ( '' === $part || str_starts_with( $part, '.' ) || strtolower( $part ) === self::TMP || sanitize_file_name( $part ) !== $part ) {
+			// Accented letters are fine in a file name ("näkymä.jpg"), but
+			// some sites' sanitize_file_name() replaces them. Compare without
+			// them, so such a file isn't turned down for its name alone.
+			$plain = remove_accents( $part );
+			if ( '' === $part || str_starts_with( $part, '.' ) || strtolower( $part ) === self::TMP || sanitize_file_name( $plain ) !== $plain ) {
 				return null;
 			}
 		}
