@@ -116,6 +116,38 @@ final class RemoteSecurityTest extends TestCase {
 	}
 
 	/**
+	 * Checks only one request at a time gets a job, and that it can be taken
+	 * again once it is let go.
+	 *
+	 * @return void
+	 */
+	public function test_a_job_is_claimed_by_one_request_at_a_time(): void {
+		$this->assertTrue( Jobs::claim( 7, 'first' ) );
+		$this->assertTrue( Jobs::claim( 7, 'first' ), 'The holder keeps it.' );
+		$this->assertFalse( Jobs::claim( 7, 'second' ) );
+
+		Jobs::release( 7, 'second' );
+		$this->assertFalse( Jobs::claim( 7, 'second' ), 'Only the holder can let go.' );
+
+		Jobs::release( 7, 'first' );
+		$this->assertTrue( Jobs::claim( 7, 'second' ) );
+	}
+
+	/**
+	 * Checks a pushed import is refused while another request writes the same job.
+	 *
+	 * @return void
+	 */
+	public function test_a_received_import_waits_for_the_one_before_it(): void {
+		$GLOBALS['wpdb']->row = $this->job();
+		$this->assertTrue( Jobs::claim( 1, 'first-request' ) );
+
+		$result = ( new Local( self::PEER ) )->import( array( 'options' => array( 'job' => self::JOB ) ) );
+		$this->assertSame( 'jcore_silta_busy', $result->get_error_code() );
+		$this->assertSame( 409, $result->get_error_data()['status'] );
+	}
+
+	/**
 	 * Checks sync user can only access own initiator jobs.
 	 *
 	 * @return void

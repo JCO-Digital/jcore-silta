@@ -51,6 +51,20 @@ final class ValuesTest extends TestCase {
 		$this->assertSame( 'https://x', Values::map_raw( 'https://x', 'post', $this->visitor() ) );
 	}
 
+	public function test_raw_zero_is_not_a_reference(): void {
+		$visited = array();
+		$visitor = static function ( string $kind, int $id ) use ( &$visited ): ?int {
+			$visited[] = $kind . ':' . $id;
+
+			return null;
+		};
+
+		// Yoast stores "0" for a primary category that was never picked.
+		$this->assertSame( '0', Values::map_raw( '0', 'term', $visitor ) );
+		$this->assertSame( '00', Values::map_raw( '00', 'post', $visitor ) );
+		$this->assertSame( array(), $visited, 'Zero is never visited, so it never becomes a dependency.' );
+	}
+
 	public function test_raw_comma_list(): void {
 		$this->assertSame( '101,102,103', Values::map_raw( '1,2,3', 'post', $this->visitor() ) );
 		$this->assertSame( '101, 102', Values::map_raw( '1, 2', 'post', $this->visitor() ), 'Separators stay when every ID resolves.' );

@@ -171,6 +171,26 @@ final class MediaTest extends TestCase {
 		$this->error( 'jcore_silta_file_type', Media::prepare( $this->record(), 0, 'peer-a' ) );
 	}
 
+	public function test_accented_file_names_are_accepted_whatever_the_site_sanitizer_does(): void {
+		$path = '2018/11/kesän-näkymä.png';
+		foreach ( array( false, true ) as $strips ) {
+			// Some sites' sanitize_file_name() turns "ä" into "a".
+			$GLOBALS['jcore_silta_media_test_strip_accents'] = $strips;
+			try {
+				$prepared = Media::prepare( $this->record( $path ), 0, 'peer-a' );
+				$this->assertIsArray( $prepared, $strips ? 'sanitizer strips accents' : 'sanitizer keeps accents' );
+				$this->assertSame( $path, $prepared['main'] );
+			} finally {
+				unset( $GLOBALS['jcore_silta_media_test_strip_accents'] );
+			}
+		}
+
+		// Still nothing else gets through with them.
+		foreach ( array( '2018/11/näkymä kesällä.png', '2018/11/näkymä.php.png', '../näkymä.png' ) as $bad ) {
+			$this->assertInstanceOf( WP_Error::class, Media::prepare( $this->record( $bad ), 0, 'peer-a' ), $bad );
+		}
+	}
+
 	public function test_prepare_checks_every_metadata_filename_and_auxiliary_kind(): void {
 		foreach ( array( '../outside.png', '.hidden.png', 'bad.php', 'image.svg', 'other.pdf' ) as $name ) {
 			$record                                       = $this->record();
@@ -259,9 +279,15 @@ final class MediaTest extends TestCase {
 		file_put_contents( $tmp, str_repeat( 'x', strlen( $this->png ) ) );
 		$this->error( 'jcore_silta_incomplete', Media::finalize( $transfer, 'peer-a', $record ) );
 		file_put_contents( $tmp, $this->png );
+		// Another attachment took the name meanwhile (a media translation with
+		// the same file): the received bytes get a free name, the other file stays.
 		mkdir( $this->dir . '/2026/10', 0777, true );
-		file_put_contents( $this->dir . '/' . $path, $this->png );
-		$this->error( 'jcore_silta_clash', Media::finalize( $transfer, 'peer-a', $record ) );
+		file_put_contents( $this->dir . '/' . $path, 'The other attachment' );
+		$finished = Media::finalize( $transfer, 'peer-a', $record );
+		$this->assertSame( '2026/10/photo-1.png', $finished['main'] );
+		$this->assertSame( array( $path => '2026/10/photo-1.png' ), $finished['map'] );
+		$this->assertSame( $this->png, file_get_contents( $this->dir . '/2026/10/photo-1.png' ) );
+		$this->assertSame( 'The other attachment', file_get_contents( $this->dir . '/' . $path ) );
 	}
 
 	public function test_existing_identical_files_are_never_reused(): void {
@@ -330,6 +356,68 @@ final class MediaTest extends TestCase {
 		$read = Media::read( 7, 'large.pdf', 0, PHP_INT_MAX );
 		$this->assertSame( Media::chunk_size(), strlen( base64_decode( $read['data'] ) ) );
 		$this->assertFalse( $read['eof'] );
+	}
+
+	public function test_several_files_are_read_in_one_go_up_to_the_length(): void {
+		$sizes = array(
+			'photo.png'         => $this->png,
+			'photo-150x150.png' => str_repeat( 'a', 10 ),
+			'photo-300x300.png' => str_repeat( 'b', 30 ),
+		);
+		foreach ( $sizes as $name => $bytes ) {
+			file_put_contents( $this->dir . '/' . $name, $bytes );
+		}
+		$GLOBALS['jcore_silta_media_test_meta'][7] = array(
+			'_wp_attached_file'       => 'photo.png',
+			'_wp_attachment_metadata' => array(
+				'sizes' => array(
+					'thumbnail' => array( 'file' => 'photo-150x150.png' ),
+					'medium'    => array( 'file' => 'photo-300x300.png' ),
+				),
+			),
+		);
+		$files                                     = static fn( int $offset = 0 ): array => array(
+			array(
+				'path'   => 'photo.png',
+				'offset' => $offset,
+			),
+			array(
+				'path'   => 'photo-150x150.png',
+				'offset' => 0,
+			),
+			array(
+				'path'   => 'photo-300x300.png',
+				'offset' => 0,
+			),
+		);
+
+		// Everything fits: one request carries the whole attachment.
+		$chunks = Media::read_many( 7, $files(), 1024 )['chunks'];
+		$this->assertSame( array_keys( $sizes ), array_column( $chunks, 'path' ) );
+		$this->assertSame( array_values( $sizes ), array_map( 'base64_decode', array_column( $chunks, 'data' ) ) );
+		$this->assertSame( array( true, true, true ), array_column( $chunks, 'eof' ) );
+
+		// The length runs out inside the last file read: it is cut short and
+		// the files after it wait for the next request.
+		$length = strlen( $this->png ) + 4;
+		$chunks = Media::read_many( 7, $files(), $length )['chunks'];
+		$this->assertSame( array( 'photo.png', 'photo-150x150.png' ), array_column( $chunks, 'path' ) );
+		$this->assertSame( 'aaaa', base64_decode( $chunks[1]['data'] ) );
+		$this->assertFalse( $chunks[1]['eof'] );
+
+		// A file is picked up where the last request left it.
+		$chunks = Media::read_many( 7, $files( 5 ), 1024 )['chunks'];
+		$this->assertSame( substr( $this->png, 5 ), base64_decode( $chunks[0]['data'] ) );
+
+		// Only files of this attachment, however many are asked for.
+		$files   = $files();
+		$files[] = array(
+			'path'   => '../../wp-config.php',
+			'offset' => 0,
+		);
+		$this->error( 'jcore_silta_no_file', Media::read_many( 7, $files, 1024 ) );
+		$this->error( 'jcore_silta_bad_chunk', Media::read_many( 7, array(), 1024 ) );
+		$this->error( 'jcore_silta_bad_chunk', Media::read_many( 7, array_fill( 0, Media::BATCH_FILES + 1, $files[0] ), 1024 ) );
 	}
 
 	public function test_metadata_contains_only_mapped_basenames(): void {
@@ -638,6 +726,88 @@ final class MediaTest extends TestCase {
 		$this->assertSame( 'planned', $GLOBALS['wpdb']->items[1]['status'] );
 		$this->assertFalse( $step->invokeArgs( $runner, array( &$state, microtime( true ) + 10 ) ) );
 		$this->assertSame( 'transferred', $GLOBALS['wpdb']->items[1]['status'] );
+	}
+
+	public function test_runner_moves_an_attachment_in_one_round_trip_when_the_other_site_can(): void {
+		// The checks on arrival want real image bytes.
+		$thumb                      = $this->png;
+		$record                     = $this->record();
+		$record['file']['files'][]  = array(
+			'path' => '2026/10/photo-150x150.png',
+			'size' => strlen( $thumb ),
+			'hash' => sha1( $thumb ),
+		);
+		$record['file']['metadata'] = array( 'sizes' => array( 'thumbnail' => array( 'file' => 'photo-150x150.png' ) ) );
+		$bytes                      = array(
+			'2026/10/photo.png'         => $this->png,
+			'2026/10/photo-150x150.png' => $thumb,
+		);
+
+		$source = $this->createMock( Endpoint::class );
+		$target = $this->createMock( Endpoint::class );
+		$source->expects( $this->once() )->method( 'media_read' )->willReturnCallback(
+			function ( array $args ) use ( $bytes ): array {
+				$this->assertSame( array_keys( $bytes ), array_column( $args['files'], 'path' ), 'Every file is asked for at once.' );
+				return array(
+					'chunks' => array_map(
+						static fn( array $file ): array => array(
+							'path' => $file['path'],
+							'data' => base64_encode( $bytes[ $file['path'] ] ),
+							'eof'  => true,
+						),
+						$args['files']
+					),
+				);
+			}
+		);
+		$target->expects( $this->once() )->method( 'media_write' )->willReturnCallback(
+			static function ( array $args ): array|WP_Error {
+				$files = array();
+				foreach ( $args['chunks'] as $chunk ) {
+					$written = Media::write( $args['transfer'], $chunk['path'], $chunk['offset'], $chunk['data'], 'peer-a', $args['id'] );
+					if ( is_wp_error( $written ) ) {
+						return $written;
+					}
+					$files[] = array( 'path' => $chunk['path'] ) + $written;
+				}
+				return array( 'files' => $files );
+			}
+		);
+		$target->method( 'media_prepare' )->willReturnCallback( static fn(): array|WP_Error => Media::prepare( $record, 0, 'peer-a' ) );
+
+		$runner = $this->runner( $source, $target );
+		$state  = array( 'features' => array( 'media_batch' ) );
+		$step   = new \ReflectionMethod( Runner::class, 'media_step' );
+		$this->assertFalse( $step->invokeArgs( $runner, array( &$state, microtime( true ) + 10 ) ) );
+		$this->assertSame( 'transferred', $GLOBALS['wpdb']->items[1]['status'] );
+		$this->assertArrayNotHasKey( 'media', $state );
+
+		$transfer = json_decode( $GLOBALS['wpdb']->items[1]['result'], true )['transfer'];
+		$this->assertSame( '2026/10/photo.png', Media::finalize( $transfer, 'peer-a', $record )['main'] );
+		$this->assertSame( $thumb, file_get_contents( $this->dir . '/2026/10/photo-150x150.png' ) );
+	}
+
+	public function test_runner_keeps_an_item_the_target_ran_out_of_time_for(): void {
+		$source = $this->createMock( Endpoint::class );
+		$target = $this->createMock( Endpoint::class );
+		$target->expects( $this->once() )->method( 'import' )->willReturnCallback(
+			function ( array $args ): array {
+				$this->assertGreaterThanOrEqual( 5, $args['options']['budget'], 'The target is told how long it has.' );
+				return array( 'results' => array( 'post:7' => array( 'status' => 'deferred' ) ) );
+			}
+		);
+		$transfer = wp_generate_uuid4();
+		$runner   = $this->runner( $source, $target, 'transferred', $transfer );
+		$import   = new \ReflectionMethod( Runner::class, 'import' );
+
+		$GLOBALS['jcore_silta_media_test_admin'] = true;
+		try {
+			$import->invoke( $runner, array( (array) Jobs::item( 2, 1 ) ), false );
+		} finally {
+			unset( $GLOBALS['jcore_silta_media_test_admin'] );
+		}
+		$this->assertSame( 'transferred', $GLOBALS['wpdb']->items[1]['status'], 'Still queued, with its files.' );
+		$this->assertSame( array( 'transfer' => $transfer ), json_decode( $GLOBALS['wpdb']->items[1]['result'], true ) );
 	}
 
 	public function test_a_lost_staging_folder_expires_the_transfer(): void {

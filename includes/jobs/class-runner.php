@@ -79,6 +79,35 @@ final class Runner {
 	private Endpoint $target;
 
 	/**
+	 * This request's claim on the job, while it holds one.
+	 *
+	 * @var string|null
+	 */
+	private ?string $claim = null;
+
+	/**
+	 * When the current request should stop starting new work (microtime).
+	 *
+	 * @var float
+	 */
+	private float $deadline = 0.0;
+
+	/**
+	 * Keys of the job's objects, flipped; read once per request and dropped
+	 * whenever items are added.
+	 *
+	 * @var array<string, int>|null
+	 */
+	private ?array $keys = null;
+
+	/**
+	 * Targets chosen by hand for the job's objects, by key; read once per request.
+	 *
+	 * @var array<string, int|string>|null
+	 */
+	private ?array $overrides = null;
+
+	/**
 	 * Creates a runner.
 	 *
 	 * @param array<string, mixed> $job        Job.
@@ -176,6 +205,8 @@ final class Runner {
 					'level'     => 0,
 					// A push is undone from the other site's snapshots, kept as long as it says.
 					'undo_days' => 'push' === $direction ? max( 0, min( 365, (int) ( $handshake['undo_days'] ?? 0 ) ) ) : 0,
+					// What the other site's version understands, see Site::FEATURES.
+					'features'  => array_values( array_intersect( Site::FEATURES, array_filter( (array) ( $handshake['features'] ?? array() ), 'is_string' ) ) ),
 				),
 			)
 		);
@@ -222,9 +253,34 @@ final class Runner {
 		if ( ! in_array( $this->job['status'], array( 'preparing', 'ready' ), true ) ) {
 			return $this->progress();
 		}
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		// Another request may have moved the job on before this one got it.
+		if ( ! in_array( $this->job['status'], array( 'preparing', 'ready' ), true ) ) {
+			$this->release();
 
-		$deadline = microtime( true ) + $budget;
-		$state    = $this->job['state'];
+			return $this->progress();
+		}
+
+		try {
+			return $this->prepare_steps( $budget );
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Runs preparation steps until the budget is spent or the job is ready.
+	 *
+	 * @param float $budget Seconds.
+	 *
+	 * @return array<string, mixed>|WP_Error Progress.
+	 */
+	private function prepare_steps( float $budget ): array|WP_Error {
+		$deadline       = microtime( true ) + $budget;
+		$this->deadline = $deadline;
+		$state          = $this->job['state'];
 
 		while ( microtime( true ) < $deadline ) {
 			$phase = (string) ( $state['phase'] ?? 'resolve' );
@@ -269,6 +325,22 @@ final class Runner {
 	 * @return array<string, mixed>|WP_Error Progress.
 	 */
 	public function expand(): array|WP_Error {
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		try {
+			return $this->add_level();
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Adds the next dependency level to a claimed job.
+	 *
+	 * @return array<string, mixed> Progress.
+	 */
+	private function add_level(): array {
 		$state   = $this->job['state'];
 		$level   = (int) ( $state['level'] ?? 0 );
 		$missing = $this->missing( $level );
@@ -358,6 +430,31 @@ final class Runner {
 		if ( ! in_array( $this->job['status'], array( 'ready', 'running' ), true ) ) {
 			return new WP_Error( 'jcore_silta_not_ready', __( 'The sync is not ready to run.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		// Another request may have finished or stopped the job before this one got it.
+		if ( ! in_array( $this->job['status'], array( 'ready', 'running' ), true ) ) {
+			$this->release();
+
+			return $this->progress();
+		}
+
+		try {
+			return $this->run_steps( $budget );
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Runs steps of a claimed job until the budget is spent or it is done.
+	 *
+	 * @param float $budget Seconds.
+	 *
+	 * @return array<string, mixed>|WP_Error Progress.
+	 */
+	private function run_steps( float $budget ): array|WP_Error {
 
 		// Capabilities can change between planning and running.
 		if ( ! Capabilities::unrestricted() ) {
@@ -374,8 +471,9 @@ final class Runner {
 			);
 		}
 
-		$deadline = microtime( true ) + $budget;
-		$state    = $this->job['state'];
+		$deadline       = microtime( true ) + $budget;
+		$this->deadline = $deadline;
+		$state          = $this->job['state'];
 		if ( isset( $state['media']['item'] ) && is_wp_error( $this->item_permission( (int) $state['media']['item'] ) ) ) {
 			unset( $state['media'] );
 		}
@@ -387,12 +485,18 @@ final class Runner {
 		);
 
 		while ( microtime( true ) < $deadline ) {
+			// Stopped from another request (the Stop button) while this one worked.
+			if ( 'cancelled' === Jobs::status( (int) $this->job['id'] ) ) {
+				$this->job['status'] = 'cancelled';
+				break;
+			}
+
 			$phase = (string) ( $state['run'] ?? 'media' );
 
 			$result = match ( $phase ) {
 				'media' => $this->media_step( $state, $deadline ),
 				'import' => $this->media_import_batch( $state, $deadline ),
-				'fixup' => $this->fixup_batch(),
+				'fixup' => $this->fixup_batch( $state ),
 				'trash' => $this->trash(),
 				default => 'done',
 			};
@@ -433,12 +537,16 @@ final class Runner {
 	}
 
 	/**
-	 * Undoes the job on the target.
+	 * Undoes the job on the target, for as long as the budget allows. The
+	 * result's `remaining` says how many changes are still to be undone: call
+	 * again until it is zero.
+	 *
+	 * @param float|null $budget Seconds, or null to undo everything in one go.
 	 *
 	 * @return array<string, mixed>|WP_Error
 	 */
-	public function undo(): array|WP_Error {
-		if ( ! in_array( $this->job['status'], array( 'done', 'running', 'failed', 'cancelled' ), true ) ) {
+	public function undo( ?float $budget = null ): array|WP_Error {
+		if ( ! in_array( $this->job['status'], array( 'done', 'running', 'failed', 'cancelled', 'undoing' ), true ) ) {
 			return new WP_Error( 'jcore_silta_not_undoable', __( 'Only syncs that have written something can be undone.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
@@ -449,14 +557,27 @@ final class Runner {
 			}
 		}
 
-		$result = $this->target->undo( array( 'job' => $this->job['uuid'] ) );
-		if ( is_wp_error( $result ) ) {
-			return $result;
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
 		}
+		try {
+			$args = array( 'job' => $this->job['uuid'] );
+			if ( null !== $budget ) {
+				$args['budget'] = $budget;
+			}
+			$result = $this->target->undo( $args );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
 
-		$this->save( array( 'status' => 'undone' ) );
+			// A target that undoes in one go (an older version) reports nothing left.
+			$result['remaining'] = max( 0, (int) ( $result['remaining'] ?? 0 ) );
+			$this->save( array( 'status' => $result['remaining'] > 0 ? 'undoing' : 'undone' ) );
 
-		return $result;
+			return $result;
+		} finally {
+			$this->release();
+		}
 	}
 
 	/**
@@ -585,7 +706,7 @@ final class Runner {
 	 * @return array{undo_until: string, undo_expired: bool} GMT datetime or '', and whether the snapshots are gone.
 	 */
 	private static function undo_window( array $job ): array {
-		$written = in_array( $job['status'], array( 'done', 'cancelled', 'failed', 'received' ), true );
+		$written = in_array( $job['status'], array( 'done', 'cancelled', 'failed', 'received', 'undoing' ), true );
 
 		if ( 'initiator' === $job['role'] && 'push' === $job['direction'] ) {
 			$days  = (int) ( $job['state']['undo_days'] ?? 0 );
@@ -664,6 +785,7 @@ final class Runner {
 		}
 
 		Jobs::add_items( (int) $this->job['id'], $items );
+		$this->keys = null;
 
 		return 'plan';
 	}
@@ -734,17 +856,27 @@ final class Runner {
 			ARRAY_FILTER_USE_BOTH
 		);
 
+		// Why a record the source did send was turned down, by key.
+		$problems = array();
+		foreach ( (array) ( $bundle['objects'] ?? array() ) as $sent ) {
+			$problem = Context::record_error( $sent );
+			if ( null !== $problem && is_array( $sent ) && is_string( $sent['key'] ?? null ) ) {
+				$problems[ $sent['key'] ] = $problem;
+			}
+		}
+
 		$planned = array();
 		foreach ( $items as $item ) {
 			$record = $objects[ $item['key'] ] ?? null;
 			if ( null === $record ) {
+				// The source says why when it can, e.g. "Gravity Forms is not active".
+				$error = $bundle['errors'][ $item['key'] ] ?? $problems[ $item['key'] ] ?? null;
 				Jobs::update_item(
 					(int) $item['id'],
 					array(
 						'status'   => 'failed',
 						'included' => false,
-						// The source says why when it can, e.g. "Gravity Forms is not active".
-						'result'   => array( 'error' => is_string( $bundle['errors'][ $item['key'] ] ?? null ) ? sanitize_text_field( $bundle['errors'][ $item['key'] ] ) : __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
+						'result'   => array( 'error' => is_string( $error ) ? sanitize_text_field( $error ) : __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
 					)
 				);
 				continue;
@@ -866,6 +998,7 @@ final class Runner {
 				);
 			}
 			Jobs::add_items( (int) $this->job['id'], $items );
+			$this->keys = null;
 		}
 
 		$state['orphans_done'] = true;
@@ -925,6 +1058,24 @@ final class Runner {
 
 		$chunk = \Jcore\Silta\Sync\Media::chunk_size();
 		$files = count( $cursor['files'] );
+		$batch = in_array( 'media_batch', (array) ( $state['features'] ?? array() ), true );
+		while ( $batch && $cursor['index'] < $files && microtime( true ) < $deadline ) {
+			$moved = $this->media_batch( $cursor, $chunk );
+			if ( is_wp_error( $moved ) ) {
+				if ( 'jcore_silta_transfer_expired' === $moved->get_error_code() ) {
+					unset( $state['media'] );
+					$item = Jobs::item( (int) $this->job['id'], (int) $cursor['item'] );
+					if ( null !== $item ) {
+						$this->resend( $item, $moved->get_error_message() );
+					}
+
+					return false;
+				}
+				$state['media'] = $cursor;
+
+				return $moved;
+			}
+		}
 		while ( $cursor['index'] < $files && microtime( true ) < $deadline ) {
 			$file = $cursor['files'][ $cursor['index'] ];
 
@@ -991,6 +1142,83 @@ final class Runner {
 		$state['media'] = $cursor;
 
 		return false;
+	}
+
+	/**
+	 * Moves as many of an attachment's remaining files as fit in one request
+	 * from the source to the target, and advances the cursor. One round trip
+	 * to the other site instead of one per file.
+	 *
+	 * @param array<string, mixed> $cursor Transfer cursor, advanced in place.
+	 * @param int                  $chunk  Bytes one request may carry.
+	 *
+	 * @return true|WP_Error
+	 */
+	private function media_batch( array &$cursor, int $chunk ): bool|WP_Error {
+		$wanted = array();
+		$last   = min( count( $cursor['files'] ), $cursor['index'] + \Jcore\Silta\Sync\Media::BATCH_FILES );
+		for ( $i = $cursor['index']; $i < $last; $i++ ) {
+			$wanted[] = array(
+				'path'   => (string) $cursor['files'][ $i ]['path'],
+				'offset' => $i === $cursor['index'] ? (int) $cursor['offset'] : 0,
+			);
+		}
+
+		$read = $this->source->media_read(
+			array(
+				'id'     => $cursor['source'],
+				'files'  => $wanted,
+				'length' => $chunk,
+			)
+		);
+		if ( is_wp_error( $read ) ) {
+			return $read;
+		}
+
+		$chunks = array();
+		foreach ( (array) ( $read['chunks'] ?? array() ) as $index => $part ) {
+			// Only what was asked for, in the order asked.
+			if ( ! is_array( $part ) || ! is_string( $part['data'] ?? null ) || ( $part['path'] ?? null ) !== ( $wanted[ $index ]['path'] ?? false ) ) {
+				break;
+			}
+			$chunks[] = array(
+				'path'   => $wanted[ $index ]['path'],
+				'offset' => $wanted[ $index ]['offset'],
+				'data'   => $part['data'],
+			);
+		}
+		if ( empty( $chunks ) ) {
+			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The source sent no file data.', 'jcore-silta' ), array( 'status' => 502 ) );
+		}
+
+		$written = $this->target->media_write(
+			array(
+				'transfer' => $cursor['transfer'],
+				'id'       => $cursor['source'],
+				'chunks'   => $chunks,
+			)
+		);
+		if ( is_wp_error( $written ) ) {
+			return $written;
+		}
+
+		$before = array( $cursor['index'], $cursor['offset'] );
+		foreach ( (array) ( $written['files'] ?? array() ) as $file ) {
+			if ( ! is_array( $file ) || ( $file['path'] ?? null ) !== ( $cursor['files'][ $cursor['index'] ]['path'] ?? false ) ) {
+				break;
+			}
+			if ( empty( $file['complete'] ) ) {
+				$cursor['offset'] = (int) ( $file['received'] ?? 0 );
+				break;
+			}
+			++$cursor['index'];
+			$cursor['offset'] = 0;
+		}
+		if ( array( $cursor['index'], $cursor['offset'] ) === $before ) {
+			return new WP_Error( 'jcore_silta_stalled', __( 'The file transfer is not getting anywhere. Run the sync again.', 'jcore-silta' ), array( 'status' => 502 ) );
+		}
+
+		return true;
 	}
 
 	/**
@@ -1089,43 +1317,80 @@ final class Runner {
 	 * Imports again the items whose references to other items of the job could
 	 * not be resolved the first time, because those were created later.
 	 *
+	 * Walks the imported items once, a page at a time: `fixup_after` in the
+	 * job state remembers how far it got, so a job of thousands of items
+	 * isn't read from the start for every batch.
+	 *
+	 * @param array<string, mixed> $state Job state.
+	 *
 	 * @return bool|WP_Error True when no item is left.
 	 */
-	private function fixup_batch(): bool|WP_Error {
-		$job_id   = (int) $this->job['id'];
-		$imported = Jobs::items(
-			$job_id,
-			array(
-				'status'      => 'imported',
-				'object_type' => array( 'post', 'term', 'menu', 'form' ),
-			)
-		);
-		$done     = array_flip( array_column( $imported, 'key' ) );
+	private function fixup_batch( array &$state ): bool|WP_Error {
+		$job_id = (int) $this->job['id'];
+		$done   = array_flip( Jobs::keys( $job_id, 'imported' ) );
+		$after  = (int) ( $state['fixup_after'] ?? 0 );
+		$size   = $this->batch_size();
 
 		$pending = array();
-		foreach ( $imported as $item ) {
-			$result = (array) $item['result'];
-			if ( ! empty( $result['fixed'] ) || empty( $result['unresolved'] ) ) {
-				continue;
+		do {
+			$page = Jobs::items(
+				$job_id,
+				array(
+					'status'      => 'imported',
+					'object_type' => array( 'post', 'term', 'menu', 'form' ),
+				),
+				array(
+					'light' => true,
+					'order' => 'id',
+					'after' => $after,
+					'limit' => 200,
+				)
+			);
+
+			foreach ( $page as $item ) {
+				$after  = (int) $item['id'];
+				$result = (array) $item['result'];
+				if ( ! empty( $result['fixed'] ) || empty( $result['unresolved'] ) ) {
+					continue;
+				}
+				if ( empty( array_intersect_key( array_flip( (array) $result['unresolved'] ), $done ) ) ) {
+					$result['fixed'] = true;
+					Jobs::update_item( (int) $item['id'], array( 'result' => $result ) );
+					continue;
+				}
+				$pending[] = (int) $item['id'];
+				if ( count( $pending ) >= $size ) {
+					break 2;
+				}
 			}
-			if ( empty( array_intersect_key( array_flip( (array) $result['unresolved'] ), $done ) ) ) {
-				$result['fixed'] = true;
-				Jobs::update_item( (int) $item['id'], array( 'result' => $result ) );
-				continue;
-			}
-			$pending[] = (int) $item['id'];
-			if ( count( $pending ) >= $this->batch_size() ) {
-				break;
-			}
-		}
+			$more = count( $page ) >= 200;
+		} while ( $more );
 
 		if ( empty( $pending ) ) {
 			return true;
 		}
 
 		$items = Jobs::items( $job_id, array( 'id' => $pending ), array( 'payload' => true ) );
+		$sent  = $this->import( $items, true );
+		if ( is_wp_error( $sent ) ) {
+			return $sent;
+		}
 
-		return $this->import( $items, true );
+		// Up to the last item the target got to; the ones it handed back
+		// (out of time, or too large to send along) come first next time.
+		$left = Jobs::items(
+			$job_id,
+			array(
+				'id'     => $pending,
+				'status' => 'imported',
+			),
+			array( 'light' => true )
+		);
+		$left = array_filter( $left, static fn( array $item ): bool => empty( $item['result']['fixed'] ) );
+
+		$state['fixup_after'] = empty( $left ) ? $after : min( array_column( $left, 'id' ) ) - 1;
+
+		return false;
 	}
 
 	/**
@@ -1256,6 +1521,8 @@ final class Runner {
 			$options['confirmed'] = array_fill_keys( array_column( $items, 'key' ), true );
 			$options['fixup']     = true;
 		}
+		// What is left of this request's time, and enough for one object at least.
+		$options['budget'] = max( 5.0, round( $this->deadline - microtime( true ), 1 ) );
 
 		$response = $this->target->import(
 			array(
@@ -1272,6 +1539,11 @@ final class Runner {
 				'status' => 'failed',
 				'error'  => __( 'The target did not report on this item.', 'jcore-silta' ),
 			) );
+
+			// The target ran out of time before this one: it stays queued.
+			if ( 'deferred' === ( $result['status'] ?? '' ) ) {
+				continue;
+			}
 
 			if ( $fixup ) {
 				$result['fixed']  = true;
@@ -1304,24 +1576,36 @@ final class Runner {
 	 * @return array<string, mixed>|null
 	 */
 	private function next_attachment(): ?array {
-		$items = Jobs::items(
-			(int) $this->job['id'],
-			array(
-				'included'    => 1,
-				'status'      => 'planned',
-				'object_type' => 'post',
-				'subtype'     => 'attachment',
-				'action'      => array( 'create', 'update' ),
-			)
-		);
+		$after = 0;
+		do {
+			// A page at a time: usually the first attachment is the one, and
+			// a job can hold thousands of them.
+			$items = Jobs::items(
+				(int) $this->job['id'],
+				array(
+					'included'    => 1,
+					'status'      => 'planned',
+					'object_type' => 'post',
+					'subtype'     => 'attachment',
+					'action'      => array( 'create', 'update' ),
+				),
+				array(
+					'order' => 'id',
+					'after' => $after,
+					'limit' => 50,
+				)
+			);
 
-		foreach ( $items as $item ) {
-			$changed = (array) ( $item['plan']['changed'] ?? array() );
-			$wanted  = null === $item['sections'] || ! $this->job['options']['diff'] || in_array( 'file', (array) $item['sections'], true );
-			if ( 'create' === $item['action'] || ( in_array( 'file', $changed, true ) && $wanted ) ) {
-				return Jobs::item( (int) $this->job['id'], (int) $item['id'] );
+			foreach ( $items as $item ) {
+				$after   = (int) $item['id'];
+				$changed = (array) ( $item['plan']['changed'] ?? array() );
+				$wanted  = null === $item['sections'] || ! $this->job['options']['diff'] || in_array( 'file', (array) $item['sections'], true );
+				if ( 'create' === $item['action'] || ( in_array( 'file', $changed, true ) && $wanted ) ) {
+					return Jobs::item( (int) $this->job['id'], (int) $item['id'] );
+				}
 			}
-		}
+			$more = count( $items ) >= 50;
+		} while ( $more );
 
 		return null;
 	}
@@ -1706,6 +1990,7 @@ final class Runner {
 		}
 
 		Jobs::add_items( (int) $this->job['id'], $companions );
+		$this->keys = null;
 	}
 
 	/**
@@ -1752,6 +2037,7 @@ final class Runner {
 		}
 
 		Jobs::add_items( $job_id, $orphans );
+		$this->keys = null;
 	}
 
 	/**
@@ -1764,7 +2050,7 @@ final class Runner {
 	 */
 	private function missing( int $level ): array {
 		$job_id  = (int) $this->job['id'];
-		$known   = array_flip( Jobs::keys( $job_id ) );
+		$known   = $this->keys();
 		$missing = array();
 
 		$items = Jobs::items(
@@ -1810,6 +2096,7 @@ final class Runner {
 		}
 
 		Jobs::add_items( (int) $this->job['id'], $items );
+		$this->keys = null;
 	}
 
 	/**
@@ -1851,24 +2138,27 @@ final class Runner {
 	 * @return array<string, mixed>
 	 */
 	private function plan_options( array $items ): array {
-		$overrides = array();
-		foreach ( $items as $item ) {
-			$override = $item['override']['target'] ?? null;
-			if ( null !== $override ) {
-				$overrides[ $item['key'] ] = $override;
-			}
-		}
-
 		// Only the job's objects these items refer to: the target needs them to
 		// tell "created later in this job" from "missing", and a whole-post-type
 		// job can hold thousands of keys.
-		$in_job = array_flip( Jobs::keys( (int) $this->job['id'] ) );
+		$in_job = $this->keys();
 		$refs   = array();
 		foreach ( $items as $item ) {
 			foreach ( (array) ( $item['payload']['object']['refs'] ?? array() ) as $ref ) {
 				if ( isset( $in_job[ $ref ] ) ) {
 					$refs[ $ref ] = true;
 				}
+			}
+		}
+
+		// A target chosen by hand also holds for references to that object
+		// from other batches, which only have its stub.
+		$this->overrides ??= Jobs::overrides( (int) $this->job['id'] );
+		$overrides         = array_intersect_key( $this->overrides, $refs );
+		foreach ( $items as $item ) {
+			$override = $item['override']['target'] ?? null;
+			if ( null !== $override ) {
+				$overrides[ $item['key'] ] = $override;
 			}
 		}
 
@@ -1967,5 +2257,55 @@ final class Runner {
 	private function save( array $changes ): void {
 		Jobs::update( (int) $this->job['id'], $changes );
 		$this->job = array_merge( $this->job, $changes );
+		if ( null !== $this->claim ) {
+			Jobs::renew( (int) $this->job['id'], $this->claim );
+		}
+	}
+
+	/**
+	 * Returns the keys of every object in the job, as array keys.
+	 *
+	 * @return array<string, int>
+	 */
+	private function keys(): array {
+		$this->keys ??= array_flip( Jobs::keys( (int) $this->job['id'] ) );
+
+		return $this->keys;
+	}
+
+	/**
+	 * Takes the job for this request and reads it again: another request may
+	 * have changed it since it was loaded.
+	 *
+	 * @return bool Whether this request holds the job.
+	 */
+	private function claim(): bool {
+		if ( null !== $this->claim ) {
+			return true;
+		}
+
+		$token = wp_generate_uuid4();
+		if ( ! Jobs::claim( (int) $this->job['id'], $token ) ) {
+			return false;
+		}
+		$this->claim = $token;
+		$this->job   = (array) Jobs::get( (int) $this->job['id'] );
+
+		// A request that dies (a fatal error, the time limit) still lets go.
+		register_shutdown_function( array( $this, 'release' ) );
+
+		return true;
+	}
+
+	/**
+	 * Lets go of the job.
+	 *
+	 * @return void
+	 */
+	public function release(): void {
+		if ( null !== $this->claim ) {
+			Jobs::release( (int) $this->job['id'], $this->claim );
+			$this->claim = null;
+		}
 	}
 }

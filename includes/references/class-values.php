@@ -45,6 +45,11 @@ final class Values {
 		}
 
 		if ( ctype_digit( $raw ) ) {
+			// Zero is how plugins store "none" (a primary term that was never
+			// picked): not a reference, and no object has that ID.
+			if ( 0 === (int) $raw ) {
+				return $raw;
+			}
 			$id = $visit( $kind, (int) $raw );
 
 			return null === $id ? '' : (string) $id;

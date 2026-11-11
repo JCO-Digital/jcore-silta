@@ -19,7 +19,7 @@ final class Database {
 	/**
 	 * Schema version. Bump it whenever a CREATE TABLE below changes.
 	 */
-	private const DB_VERSION = '1.3';
+	private const DB_VERSION = '1.4';
 
 	/**
 	 * Option holding the installed schema version.
@@ -178,6 +178,8 @@ status varchar(20) NOT NULL,
 options longtext NULL,
 state longtext NULL,
 summary longtext NULL,
+lock_token char(36) NOT NULL DEFAULT '',
+locked_until bigint(20) unsigned NOT NULL DEFAULT 0,
 created_at datetime NOT NULL,
 updated_at datetime NOT NULL,
 PRIMARY KEY  (id),

@@ -60,6 +60,38 @@ export function errorMessage( error ) {
 }
 
 /**
+ * Whether a rejected call only means another request is still working on the
+ * same sync (a retry sent while the first request was still running, or a
+ * second tab). It is safe to ask again shortly.
+ *
+ * @param {Object} error Error from apiFetch.
+ * @return {boolean} Busy.
+ */
+export const isBusy = ( error ) => error?.code === 'jcore_silta_busy';
+
+/**
+ * POSTs to a route that works on a sync, waiting while another request holds
+ * the sync instead of failing.
+ *
+ * @param {string}        path     Route below the namespace.
+ * @param {Object}        data     Body.
+ * @param {() => boolean} isActive Whether the caller still wants the answer.
+ * @return {Promise<Object>} Response.
+ */
+export async function postWhenFree( path, data = {}, isActive = () => true ) {
+	for (;;) {
+		try {
+			return await post( path, data );
+		} catch ( e ) {
+			if ( ! isBusy( e ) || ! isActive() ) {
+				throw e;
+			}
+			await new Promise( ( resolve ) => setTimeout( resolve, 2000 ) );
+		}
+	}
+}
+
+/**
  * Loads every page of a paginated list.
  *
  * @param {(page: number) => Promise<Object>} fetchPage Called with a page number; resolves to { items, total }.

@@ -75,6 +75,7 @@ final class Local extends Endpoint {
 			'gravity_forms' => Gravity_Forms::active(),
 			'forms'         => Gravity_Forms::all(),
 			'undo_days'     => (int) Settings::get( 'snapshot_days' ),
+			'features'      => Site::FEATURES,
 		);
 	}
 
@@ -111,6 +112,20 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_read( array $args ): array|WP_Error {
+		if ( isset( $args['files'] ) ) {
+			$files = $args['files'];
+			if ( ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_int( $args['length'] ?? null ) || ! is_array( $files ) || ! array_is_list( $files ) || empty( $files ) || count( $files ) > Media::BATCH_FILES ) {
+				return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+			foreach ( $files as $file ) {
+				if ( ! is_array( $file ) || ! is_string( $file['path'] ?? null ) || ! is_int( $file['offset'] ?? null ) ) {
+					return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+				}
+			}
+
+			return Media::read_many( $args['id'], $files, $args['length'] );
+		}
+
 		if ( ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_int( $args['length'] ?? null ) ) {
 			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
@@ -166,6 +181,29 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_write( array $args ): array|WP_Error {
+		if ( isset( $args['chunks'] ) ) {
+			$chunks = $args['chunks'];
+			if ( ! is_string( $args['transfer'] ?? null ) || ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_array( $chunks ) || ! array_is_list( $chunks ) || empty( $chunks ) || count( $chunks ) > Media::BATCH_FILES ) {
+				return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+
+			// In the order sent. An error ends the batch; what was written
+			// before it stays staged, and the sender carries on from there.
+			$files = array();
+			foreach ( $chunks as $chunk ) {
+				if ( ! is_array( $chunk ) || ! is_string( $chunk['path'] ?? null ) || ! is_int( $chunk['offset'] ?? null ) || ! is_string( $chunk['data'] ?? null ) ) {
+					return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+				}
+				$written = Media::write( $args['transfer'], $chunk['path'], $chunk['offset'], $chunk['data'], $this->peer, $args['id'] );
+				if ( is_wp_error( $written ) ) {
+					return $written;
+				}
+				$files[] = array( 'path' => $chunk['path'] ) + $written;
+			}
+
+			return array( 'files' => $files );
+		}
+
 		if ( ! is_string( $args['transfer'] ?? null ) || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_string( $args['data'] ?? null ) || ! is_int( $args['id'] ?? null ) || $args['id'] < 1 ) {
 			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
@@ -193,12 +231,30 @@ final class Local extends Endpoint {
 			return new WP_Error( 'jcore_silta_not_yours', __( 'That sync does not belong to you.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
-		$ctx     = $this->context( $args, false );
-		$results = ( new Importer( $ctx, $job ) )->run( $options );
-		if ( ! $this->initiator && empty( $options['fixup'] ) ) {
-			$recorded = Jobs::record_results( $job, $results, $this->peer );
-			if ( is_wp_error( $recorded ) ) {
-				return $recorded;
+		// A push is guarded here: when the initiator gave up waiting and sends
+		// the batch again, the first request may still be writing it. A pull is
+		// guarded by its runner, which holds the same job.
+		$token = $this->initiator ? null : wp_generate_uuid4();
+		if ( null !== $token && ! Jobs::claim( (int) $stored['id'], $token ) ) {
+			return Jobs::busy();
+		}
+
+		try {
+			$ctx     = $this->context( $args, false );
+			$results = ( new Importer( $ctx, $job ) )->run( $options );
+			if ( ! $this->initiator && empty( $options['fixup'] ) ) {
+				$recorded = Jobs::record_results(
+					$job,
+					array_filter( $results, static fn( array $result ): bool => 'deferred' !== ( $result['status'] ?? '' ) ),
+					$this->peer
+				);
+				if ( is_wp_error( $recorded ) ) {
+					return $recorded;
+				}
+			}
+		} finally {
+			if ( null !== $token ) {
+				Jobs::release( (int) $stored['id'], $token );
 			}
 		}
 
@@ -245,8 +301,40 @@ final class Local extends Endpoint {
 			return new WP_Error( 'jcore_silta_not_yours', __( 'That sync came from another site.', 'jcore-silta' ), array( 'status' => 403 ) );
 		}
 
-		$summary = Snapshots::undo( $uuid );
-		Jobs::update( (int) $job['id'], array( 'status' => 'undone' ) );
+		// A received push is this site's to guard; the runner guards its own pull.
+		$token = $this->initiator ? null : wp_generate_uuid4();
+		if ( null !== $token && ! Jobs::claim( (int) $job['id'], $token ) ) {
+			return Jobs::busy();
+		}
+
+		try {
+			// With a budget the undo is done in slices: the caller asks again
+			// while snapshots remain. Without one (an older initiator) in one go.
+			$budget   = is_numeric( $args['budget'] ?? null ) ? max( 1.0, min( 120.0, (float) $args['budget'] ) ) : null;
+			$slice    = Snapshots::undo( $uuid, null === $budget ? null : microtime( true ) + $budget );
+			$state    = (array) $job['state'];
+			$previous = (array) ( $state['undo'] ?? array() );
+			$summary  = array(
+				'restored'  => (int) ( $previous['restored'] ?? 0 ) + $slice['restored'],
+				'removed'   => (int) ( $previous['removed'] ?? 0 ) + $slice['removed'],
+				'untrashed' => (int) ( $previous['untrashed'] ?? 0 ) + $slice['untrashed'],
+				'errors'    => array_slice( array_merge( (array) ( $previous['errors'] ?? array() ), $slice['errors'] ), 0, 200 ),
+				'remaining' => $slice['remaining'],
+			);
+
+			$state['undo'] = $summary;
+			Jobs::update(
+				(int) $job['id'],
+				array(
+					'status' => $slice['remaining'] > 0 ? 'undoing' : 'undone',
+					'state'  => $state,
+				)
+			);
+		} finally {
+			if ( null !== $token ) {
+				Jobs::release( (int) $job['id'], $token );
+			}
+		}
 
 		return $summary;
 	}

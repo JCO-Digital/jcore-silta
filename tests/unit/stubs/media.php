@@ -40,6 +40,28 @@ namespace Jcore\Silta\Tests {
 		public array $items = array();
 
 		/**
+		 * Post meta table.
+		 *
+		 * @var string
+		 */
+		public string $postmeta = 'wp_postmeta';
+
+		/**
+		 * Mappings: "site:remote ID" => local ID.
+		 *
+		 * @var array<string, int>
+		 */
+		public array $map = array();
+
+		/**
+		 * What mappings ("site:remote ID") record about a file that site
+		 * delivered: the local attachment and the hashes.
+		 *
+		 * @var array<string, array{local: int, hashes: string[]}>
+		 */
+		public array $received = array();
+
+		/**
 		 * Simulates failed writes or reads.
 		 *
 		 * @var bool
@@ -101,6 +123,16 @@ namespace Jcore\Silta\Tests {
 			$this->last_error = $this->fail ? 'database unavailable' : '';
 			if ( $this->fail ) {
 				return null;
+			}
+			// An attachment's file, and how many other attachments have it too.
+			if ( str_contains( $sql, "meta_key = '_wp_attached_file'" ) ) {
+				$meta = $GLOBALS['jcore_silta_media_test_meta'] ?? array();
+				if ( preg_match( "/meta_value IN \( '([^']*)', '([^']*)' \) AND post_id <> (\d+)/", $sql, $match ) ) {
+					return count( array_filter( $meta, static fn( array $row, int $id ): bool => $id !== (int) $match[3] && in_array( $row['_wp_attached_file'] ?? null, array( $match[1], $match[2] ), true ), ARRAY_FILTER_USE_BOTH ) );
+				}
+				preg_match( '/post_id = (\d+)/', $sql, $match );
+
+				return $meta[ (int) $match[1] ]['_wp_attached_file'] ?? null;
 			}
 			if ( str_contains( $sql, 'COUNT(*)' ) ) {
 				preg_match( "/peer = '([^']+)'/", $sql, $match );
@@ -180,6 +212,25 @@ namespace Jcore\Silta\Tests {
 		 * @return array|null
 		 */
 		public function get_row( string $sql, string $format ): ?array {
+			if ( str_contains( $sql, 'jcore_silta_map' ) ) {
+				preg_match( "/site = '([^']*)' AND object_type = 'post' AND remote_id = (\d+)/", $sql, $match );
+				$key   = ( $match[1] ?? '' ) . ':' . ( $match[2] ?? '' );
+				$local = $this->map[ $key ] ?? null;
+
+				return null === $local ? null : array(
+					'id'        => 1,
+					'site'      => $match[1],
+					'remote_id' => (int) $match[2],
+					'local_id'  => $local,
+					'extra'     => isset( $this->received[ $key ] ) ? wp_json_encode(
+						array(
+							'files'    => array(),
+							'received' => $this->received[ $key ],
+						)
+					) : null,
+				);
+			}
+
 			return $this->get_results( $sql, $format )[0] ?? null;
 		}
 
@@ -336,6 +387,13 @@ namespace {
 			 * @var string
 			 */
 			public string $post_type = 'attachment';
+
+			/**
+			 * Post status.
+			 *
+			 * @var string
+			 */
+			public string $post_status = 'inherit';
 		}
 	}
 
@@ -532,9 +590,36 @@ namespace {
 		 * @return string
 		 */
 		function sanitize_file_name( string $name ): string {
+			if ( ! empty( $GLOBALS['jcore_silta_media_test_strip_accents'] ) ) {
+				$name = remove_accents( $name );
+			}
 			$clean = preg_replace( '/[\\x00-\\x20?<>:"\\\\|*]/', '', $name );
 			$clean = preg_replace( '/\\.(php|phtml|phar)\\./i', '.$1_.', $clean );
 			return trim( $clean, '.-_' );
+		}
+	}
+
+	if ( ! function_exists( 'remove_accents' ) ) {
+		/**
+		 * Stand-in for remove_accents(), for the letters the fixtures use.
+		 *
+		 * @param string $text Text.
+		 *
+		 * @return string
+		 */
+		function remove_accents( string $text ): string {
+			return strtr(
+				$text,
+				array(
+					'ä' => 'a',
+					'ö' => 'o',
+					'å' => 'a',
+					'Ä' => 'A',
+					'Ö' => 'O',
+					'Å' => 'A',
+					'é' => 'e',
+				)
+			);
 		}
 	}
 
@@ -628,6 +713,42 @@ namespace {
 		 */
 		function wp_delete_file( string $file ): void {
 			unlink( $file );
+		}
+	}
+
+	if ( ! function_exists( 'wp_delete_attachment' ) ) {
+		/**
+		 * Deletes a fixture attachment the way core does: its post and meta,
+		 * then every file the `wp_delete_file` filter lets through.
+		 *
+		 * @param int  $id    Attachment ID.
+		 * @param bool $force Skip the trash.
+		 *
+		 * @return bool
+		 */
+		function wp_delete_attachment( int $id, bool $force = false ): bool { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter -- Core signature.
+			$meta  = $GLOBALS['jcore_silta_media_test_meta'][ $id ] ?? array();
+			$main  = (string) ( $meta['_wp_attached_file'] ?? '' );
+			$dir   = '.' === dirname( $main ) ? '' : dirname( $main ) . '/';
+			$files = array( $main );
+			foreach ( (array) ( $meta['_wp_attachment_metadata']['sizes'] ?? array() ) as $size ) {
+				$files[] = $dir . $size['file'];
+			}
+			unset( $GLOBALS['jcore_silta_media_test_meta'][ $id ], $GLOBALS['jcore_silta_media_test_posts'][ $id ] );
+
+			foreach ( $files as $file ) {
+				$file = wp_get_upload_dir()['basedir'] . '/' . $file;
+				foreach ( $GLOBALS['jcore_silta_test_actions']['wp_delete_file'] ?? array() as $callbacks ) {
+					foreach ( $callbacks as $callback ) {
+						$file = $callback( $file );
+					}
+				}
+				if ( '' !== $file && is_file( $file ) ) {
+					unlink( $file );
+				}
+			}
+
+			return true;
 		}
 	}
 

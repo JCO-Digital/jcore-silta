@@ -57,6 +57,7 @@ final class Plugin {
 		Integrations\Gravity_Forms::register();
 		Integrations\WooCommerce::register();
 		Integrations\WooCommerce_Product_Bundles::register();
+		Integrations\Polylang_Synchronization::register();
 
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( Site::class, 'check' ), 1 );

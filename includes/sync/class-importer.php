@@ -84,7 +84,21 @@ final class Importer {
 		 */
 		do_action( 'jcore_silta_writes_start', $this->ctx->objects );
 
+		// With a budget, objects the time doesn't reach are handed back as
+		// `deferred` and the job sends them again. Without it a slow batch
+		// (large images to resize) could outlast the request's time limit and
+		// die half-written.
+		$deadline = is_numeric( $options['budget'] ?? null ) ? microtime( true ) + max( 1.0, (float) $options['budget'] ) : null;
+		$written  = 0;
+
 		foreach ( $this->ctx->objects as $key => $record ) {
+			// Always the first one, so every request gets somewhere.
+			if ( null !== $deadline && $written > 0 && microtime( true ) >= $deadline ) {
+				$results[ $key ] = array( 'status' => 'deferred' );
+				continue;
+			}
+			++$written;
+
 			try {
 				$results[ $key ] = match ( $record['type'] ) {
 					'post' => $this->post( $record, $options ),
@@ -217,14 +231,33 @@ final class Importer {
 			$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array(), false, $restore ) );
 		}
 
+		// The language before the terms: Polylang turns the terms a post is
+		// given into their translations in the post's language, and a post
+		// that was just created still has the site's default language. Its
+		// Swedish categories would be swapped for the Finnish ones.
+		if ( ! empty( $incoming['language']['lang'] ) && $wants( 'language' ) ) {
+			Polylang::set_post( $id, $incoming['language'], $restore );
+
+			// Translations may share a slug (Polylang Pro). WordPress saw the
+			// slug before the post had its language and numbered it ("name-2")
+			// when a translation already had it; now that the language is set,
+			// the slug can be what the source has.
+			$slug = (string) ( $fields['post_name'] ?? '' );
+			if ( ! $attachment && '' !== $slug && ( null === $local || $wants( 'fields.post_name' ) ) && get_post_field( 'post_name', $id, 'raw' ) !== $slug ) {
+				self::save(
+					'wp_update_post',
+					array(
+						'ID'        => $id,
+						'post_name' => $slug,
+					)
+				);
+			}
+		}
+
 		foreach ( (array) ( $incoming['terms'] ?? array() ) as $taxonomy => $ids ) {
 			if ( Content::syncable_taxonomy( (string) $taxonomy ) && is_object_in_taxonomy( $incoming['post_type'], (string) $taxonomy ) && $wants( 'terms.' . $taxonomy ) ) {
 				wp_set_object_terms( $id, array_map( 'intval', (array) $ids ), (string) $taxonomy );
 			}
-		}
-
-		if ( ! empty( $incoming['language']['lang'] ) && $wants( 'language' ) ) {
-			Polylang::set_post( $id, $incoming['language'] );
 		}
 
 		clean_post_cache( $id );
@@ -277,11 +310,22 @@ final class Importer {
 		$extra                             = null;
 
 		if ( null !== $local ) {
+			// A post this very job created: the request that created it died
+			// before it could report (or this is the second pass). It is still
+			// this job's new post, not content someone edited here.
+			$own = 'create' === Snapshots::action( $this->job, 'post', $local_id );
+
 			$changed = array();
 			foreach ( Differ::sections( $incoming, $local ) as $section => $info ) {
 				if ( $info['changed'] && $wants( $section ) ) {
 					$changed[ $section ] = true;
 				}
+			}
+
+			// The second pass only puts references right. It brings no files:
+			// they arrived (or failed to) the first time.
+			if ( ! empty( $options['fixup'] ) ) {
+				unset( $changed['file'] );
 			}
 
 			if ( empty( $changed ) ) {
@@ -290,7 +334,7 @@ final class Importer {
 
 				return array(
 					'status'     => 'imported',
-					'action'     => 'unchanged',
+					'action'     => $own ? 'created' : 'unchanged',
 					'local_id'   => $local_id,
 					'unresolved' => $incoming['unresolved'],
 					'warnings'   => $warnings,
@@ -299,7 +343,7 @@ final class Importer {
 
 			// Checked after the comparison, as the plan does: identical content is
 			// never a conflict.
-			$conflict = $this->ctx->conflict( $record, $local_id, $local );
+			$conflict = $own ? null : $this->ctx->conflict( $record, $local_id, $local );
 			if ( null !== $conflict && empty( $options['confirmed'][ $key ] ) ) {
 				$this->ctx->settle( $key, $local_id );
 
@@ -334,7 +378,7 @@ final class Importer {
 			if ( is_wp_error( $written ) ) {
 				return self::failed( $written->get_error_message() );
 			}
-			$action = 'updated';
+			$action = $own ? 'created' : 'updated';
 		} else {
 			if ( $attachment ) {
 				$created = $this->create_attachment( $incoming, is_string( $options['transfers'][ $key ] ?? null ) ? $options['transfers'][ $key ] : '', $record );
@@ -357,8 +401,14 @@ final class Importer {
 				array(
 					'site'      => $this->ctx->site,
 					'remote_id' => (int) $record['id'],
+					// An attachment on a translation's files doesn't own them:
+					// undo removes it and leaves the files.
+					'shared'    => ! empty( $extra['shared'] ),
 				)
 			);
+			// Mapped before anything else is written: if the request dies from
+			// here on, a retry finds this post instead of creating a second one.
+			Mapping::set( $this->ctx->site, 'post', (int) $record['id'], $local_id, '', '', $extra );
 
 			// Columns and content went in with the insert; write everything else.
 			$rest = self::wants( null, $errors );
@@ -489,9 +539,20 @@ final class Importer {
 			return $id;
 		}
 
-		$this->finish_file( (int) $id, $incoming, $files );
+		if ( ! empty( $files['shared'] ) ) {
+			// A copy of its translation's attachment, as Polylang makes them:
+			// the same file with the same sizes, so nothing is generated.
+			wp_update_attachment_metadata( (int) $id, (array) $files['metadata'] );
+		} else {
+			$this->finish_file( (int) $id, $incoming, $files );
+		}
 
-		return array( (int) $id, array( 'files' => self::renamed( $files['map'] ) ) );
+		$extra = self::received( (int) $id, $files, $record );
+		if ( ! empty( $files['shared'] ) ) {
+			$extra['shared'] = (int) $files['shared'];
+		}
+
+		return array( (int) $id, $extra );
 	}
 
 	/**
@@ -529,7 +590,30 @@ final class Importer {
 		update_attached_file( $id, Media::basedir() . '/' . $files['main'] );
 		$this->finish_file( $id, $incoming, $files );
 
-		return array( 'files' => self::renamed( $files['map'] ) );
+		return self::received( $id, $files, $record );
+	}
+
+	/**
+	 * Builds what is stored with an attachment's mapping when its file
+	 * arrived: the files that got another name here, and for which local
+	 * attachment and with which bytes the other site delivered them. The
+	 * second is what lets a translation share the file later, see
+	 * Media::sibling().
+	 *
+	 * @param int                  $id     Local attachment ID.
+	 * @param array<string, mixed> $files  Finalized transfer.
+	 * @param array<string, mixed> $record Incoming attachment, as received.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function received( int $id, array $files, array $record ): array {
+		return array(
+			'files'    => self::renamed( (array) $files['map'] ),
+			'received' => array(
+				'local'  => $id,
+				'hashes' => State::file_hashes( is_array( $record['file'] ?? null ) ? $record['file'] : null ),
+			),
+		);
 	}
 
 	/**

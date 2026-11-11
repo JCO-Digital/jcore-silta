@@ -39,6 +39,7 @@ export function jobStatusLabel( status ) {
 		running: __( 'Not finished', 'jcore-silta' ),
 		done: __( 'Done', 'jcore-silta' ),
 		undone: __( 'Undone', 'jcore-silta' ),
+		undoing: __( 'Partly undone', 'jcore-silta' ),
 		cancelled: __( 'Stopped', 'jcore-silta' ),
 		received: __( 'Received', 'jcore-silta' ),
 		failed: __( 'Failed', 'jcore-silta' ),
@@ -58,6 +59,7 @@ export function jobStatusTone( status ) {
 			done: 'success',
 			received: 'success',
 			running: 'warning',
+			undoing: 'warning',
 			cancelled: 'warning',
 			failed: 'error',
 		}[ status ] || 'neutral'

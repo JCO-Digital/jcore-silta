@@ -53,6 +53,11 @@ final class Meta_Writer {
 		$table  = 'term' === $type ? $wpdb->termmeta : $wpdb->postmeta;
 		$column = 'term' === $type ? 'term_id' : 'post_id';
 
+		// Everything is checked and filtered first, then written with a few
+		// queries: a new post has a hundred keys and more, and a delete and an
+		// insert for each of them adds up over a large sync.
+		$delete = array();
+		$insert = array();
 		foreach ( array_unique( $keys ) as $key ) {
 			if ( ! is_string( $key ) || ( ! $handled && ! Meta_Filter::synced( $key ) ) ) {
 				continue;
@@ -68,28 +73,37 @@ final class Meta_Writer {
 					continue 2;
 				}
 			}
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Raw write, cache cleared below.
-			$wpdb->delete(
-				$table,
-				array(
-					$column    => $id,
-					'meta_key' => $key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Delete one object's rows by key.
+
+			$delete[] = $key;
+			foreach ( $rows as $value ) {
+				$insert[] = array( $key, $kses ? self::kses( $value ) : $value );
+			}
+		}
+
+		foreach ( array_chunk( $delete, 200 ) as $chunk ) {
+			$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Raw write, cache cleared below.
+				$wpdb->prepare(
+					'DELETE FROM %i WHERE %i = %d AND meta_key IN (' . implode( ', ', array_fill( 0, count( $chunk ), '%s' ) ) . ')', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- One placeholder per key.
+					array_merge( array( $table, $column, $id ), $chunk )
 				)
 			);
+		}
 
-			foreach ( $rows as $value ) {
-				if ( $kses ) {
-					$value = self::kses( $value );
-				}
-				$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Raw write, cache cleared below.
-					$table,
-					array(
-						$column      => $id,
-						'meta_key'   => $key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Insert.
-						'meta_value' => (string) $value, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Insert.
-					)
-				);
+		// Rows in the order given, in statements that stay well below the
+		// server's packet size: a value can be megabytes.
+		$rows = array();
+		$size = 0;
+		foreach ( $insert as $index => $row ) {
+			$rows[] = $wpdb->prepare( '(%d, %s, %s)', $id, $row[0], $row[1] );
+			$size  += strlen( $row[1] );
+			if ( count( $rows ) < 100 && $size < 512 * KB_IN_BYTES && isset( $insert[ $index + 1 ] ) ) {
+				continue;
 			}
+			$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Raw write, cache cleared below.
+				$wpdb->prepare( 'INSERT INTO %i (%i, meta_key, meta_value) VALUES ', $table, $column ) . implode( ', ', $rows ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Every row is prepared above.
+			);
+			$rows = array();
+			$size = 0;
 		}
 
 		wp_cache_delete( $id, 'term' === $type ? 'term_meta' : 'post_meta' );

@@ -40,44 +40,8 @@ final class KsesTest extends TestCase {
 	 * @return object
 	 */
 	private function database(): object {
-		$GLOBALS['wpdb'] = new class() { // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolated fake database for raw-write assertions.
-			/**
-			 * Post meta table.
-			 *
-			 * @var string
-			 */
-			public string $postmeta = 'postmeta';
-			/**
-			 * Term meta table.
-			 *
-			 * @var string
-			 */
-			public string $termmeta = 'termmeta';
-			/**
-			 * Captured inserts.
-			 *
-			 * @var array
-			 */
-			public array $inserted = array();
-
-			/**
-			 * Ignores deletes.
-			 *
-			 * @return void
-			 */
-			public function delete(): void {}
-
-			/**
-			 * Captures inserts.
-			 *
-			 * @param string $table Table.
-			 * @param array  $data  Row.
-			 * @return void
-			 */
-			public function insert( string $table, array $data ): void {
-				$this->inserted[ $data['meta_key'] ][] = $data['meta_value'];
-			}
-		};
+		require_once __DIR__ . '/stubs/MetaDatabaseStub.php';
+		$GLOBALS['wpdb'] = new MetaDatabaseStub(); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolated fake database for raw-write assertions.
 
 		return $GLOBALS['wpdb'];
 	}
@@ -155,6 +119,24 @@ final class KsesTest extends TestCase {
 			),
 			$db->inserted
 		);
+	}
+
+	public function test_meta_is_written_with_a_few_statements_however_many_keys(): void {
+		$db     = $this->database();
+		$values = array();
+		for ( $i = 0; $i < 150; $i++ ) {
+			$values[ 'field_' . $i ] = array( 'value ' . $i );
+		}
+		$values['list']  = array( 'first', 'second', 'third' );
+		$values['large'] = array( str_repeat( 'x', 600 * 1024 ) );
+		$keys            = array_merge( array_keys( $values ), array( 'removed_on_the_source' ) );
+
+		$GLOBALS['jcore_silta_test_unfiltered'] = true;
+		Meta_Writer::replace( 'post', 3, $keys, $values );
+
+		$this->assertSame( $values, $db->inserted, 'Every row, values of a key in their order.' );
+		$this->assertSame( $keys, $db->deleted, 'Keys the source no longer has are deleted too.' );
+		$this->assertLessThan( 8, $db->queries, 'Not a delete and an insert per key.' );
 	}
 
 	public function test_meta_is_written_unfiltered_for_unfiltered_html_and_restores(): void {

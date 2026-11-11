@@ -31,6 +31,24 @@ final class Polylang {
 	}
 
 	/**
+	 * Whether Polylang translates media here: every attachment then has a copy
+	 * per language that shares its file, and Polylang keeps that file while
+	 * any of the copies still uses it.
+	 *
+	 * @return bool
+	 */
+	public static function media_translations(): bool {
+		if ( ! self::active() || ! function_exists( 'PLL' ) ) {
+			return false;
+		}
+
+		$polylang = PLL();
+		$options  = is_object( $polylang ) ? ( $polylang->options ?? null ) : null;
+
+		return ( is_array( $options ) || $options instanceof \ArrayAccess ) && ! empty( $options['media_support'] );
+	}
+
+	/**
 	 * Returns the language slugs this site has.
 	 *
 	 * @return string[]
@@ -105,19 +123,23 @@ final class Polylang {
 	 * Sets a post's language and links it with its translations, keeping links
 	 * to local translations the source doesn't know about.
 	 *
+	 * Restoring a snapshot puts the links back exactly as they were: the
+	 * translations a sync added are the posts its undo removes.
+	 *
 	 * @param int                                                   $id       Local post ID.
 	 * @param array{lang: string, translations: array<string, int>} $language Language and local translation IDs.
+	 * @param bool                                                  $exact    Whether to drop links that are not listed.
 	 *
 	 * @return void
 	 */
-	public static function set_post( int $id, array $language ): void {
+	public static function set_post( int $id, array $language, bool $exact = false ): void {
 		if ( ! self::active() ) {
 			return;
 		}
 
 		pll_set_post_language( $id, $language['lang'] );
 
-		$group = (array) pll_get_post_translations( $id );
+		$group = $exact ? array() : (array) pll_get_post_translations( $id );
 		foreach ( $language['translations'] as $slug => $post_id ) {
 			if ( $post_id > 0 && pll_get_post_language( $post_id, 'slug' ) === $slug ) {
 				$group[ $slug ] = $post_id;

@@ -13,6 +13,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'JCORE_SILTA_PATH', dirname( __DIR__, 2 ) . '/' );
 define( 'JCORE_SILTA_VERSION', '0.0.0' );
+define( 'KB_IN_BYTES', 1024 );
 
 require JCORE_SILTA_PATH . 'vendor/autoload.php';
 
@@ -173,6 +174,19 @@ if ( ! function_exists( 'remove_action' ) ) {
 		unset( $GLOBALS['jcore_silta_test_actions'][ $hook ][ $priority ][ $index ] );
 
 		return true;
+	}
+}
+if ( ! function_exists( 'remove_filter' ) ) {
+	/**
+	 * Removes a filter callback.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @param int    $priority Priority.
+	 * @return bool
+	 */
+	function remove_filter( string $hook, mixed $callback, int $priority = 10 ): bool {
+		return remove_action( $hook, $callback, $priority );
 	}
 }
 if ( ! function_exists( 'do_action' ) ) {

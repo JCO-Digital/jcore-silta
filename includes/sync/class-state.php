@@ -186,28 +186,73 @@ final class State {
 	 * site (or appears later, like a WooCommerce attribute) must not change
 	 * the hash of a post that has no terms in it.
 	 *
+	 * Of an attachment's files only the uploaded one counts (and the original
+	 * a large image was scaled down from). The sizes generated from it are
+	 * each site's own: a site makes the sizes its theme and plugins register,
+	 * so two copies of the same image rarely have the same set of them.
+	 *
 	 * @param array<string, mixed> $state State.
 	 *
 	 * @return string
 	 */
 	public static function hash( array $state ): string {
-		if ( isset( $state['terms'] ) && is_array( $state['terms'] ) ) {
-			$state['terms'] = array_filter( $state['terms'], static fn( $ids ): bool => ! empty( $ids ) );
-		}
-
-		return self::legacy_hash( $state );
+		return self::digest( self::without_empty_terms( $state ), false );
 	}
 
 	/**
-	 * Hashes a state the way earlier versions did, keeping empty term sets.
-	 * Mappings stored by those versions hold these hashes; hash_matches()
-	 * accepts them so an upgrade doesn't flag every synced object as changed.
+	 * Hashes a state the way the first versions did: keeping empty term sets,
+	 * and with every file of an attachment. Mappings stored by those versions
+	 * hold these hashes; hash_matches() accepts them so an upgrade doesn't
+	 * flag every synced object as changed.
 	 *
 	 * @param array<string, mixed> $state State.
 	 *
 	 * @return string
 	 */
 	public static function legacy_hash( array $state ): string {
+		return self::digest( $state, true );
+	}
+
+	/**
+	 * Says whether a stored hash still describes a state, in the current form
+	 * or one an earlier version stored.
+	 *
+	 * @param string               $stored Hash stored at the last sync.
+	 * @param array<string, mixed> $state  Current state.
+	 *
+	 * @return bool
+	 */
+	public static function hash_matches( string $stored, array $state ): bool {
+		return $stored === self::hash( $state )
+			// Up to 0.6: empty term sets left out, every file of an attachment.
+			|| $stored === self::digest( self::without_empty_terms( $state ), true )
+			|| $stored === self::legacy_hash( $state );
+	}
+
+	/**
+	 * Leaves taxonomies without terms out of a state.
+	 *
+	 * @param array<string, mixed> $state State.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function without_empty_terms( array $state ): array {
+		if ( isset( $state['terms'] ) && is_array( $state['terms'] ) ) {
+			$state['terms'] = array_filter( $state['terms'], static fn( $ids ): bool => ! empty( $ids ) );
+		}
+
+		return $state;
+	}
+
+	/**
+	 * Hashes a state's content.
+	 *
+	 * @param array<string, mixed> $state     State.
+	 * @param bool                 $all_files Whether an attachment's generated sizes count.
+	 *
+	 * @return string
+	 */
+	private static function digest( array $state, bool $all_files ): string {
 		$parts = $state;
 		unset( $parts['id'], $parts['key'], $parts['guid'], $parts['modified_gmt'], $parts['refs'], $parts['origins'], $parts['hash'], $parts['title'], $parts['meta_groups'], $parts['group_labels'], $parts['unresolved'], $parts['depth'], $parts['companions'], $parts['extra'] );
 
@@ -218,36 +263,35 @@ final class State {
 			ksort( $parts['terms'] );
 		}
 		if ( isset( $parts['file'] ) ) {
-			$parts['file'] = self::file_hashes( $parts['file'] );
+			$parts['file'] = self::file_hashes( $parts['file'], $all_files );
 		}
 
 		return sha1( (string) wp_json_encode( $parts ) );
 	}
 
 	/**
-	 * Says whether a stored hash still describes a state, in either the
-	 * current or the legacy form.
-	 *
-	 * @param string               $stored Hash stored at the last sync.
-	 * @param array<string, mixed> $state  Current state.
-	 *
-	 * @return bool
-	 */
-	public static function hash_matches( string $stored, array $state ): bool {
-		return $stored === self::hash( $state ) || $stored === self::legacy_hash( $state );
-	}
-
-	/**
-	 * Returns the sorted content hashes of an attachment's files.
+	 * Returns the sorted content hashes of an attachment's files: of the
+	 * uploaded file and its unscaled original, or of every file.
 	 *
 	 * @param array<string, mixed>|null $file File description from Media::describe().
+	 * @param bool                      $all  Whether to include the generated sizes.
 	 *
 	 * @return string[]
 	 */
-	public static function file_hashes( ?array $file ): array {
+	public static function file_hashes( ?array $file, bool $all = false ): array {
+		$main     = (string) ( $file['path'] ?? '' );
+		$original = $file['metadata']['original_image'] ?? null;
+		$dir      = dirname( $main );
+		$own      = array(
+			$main => true,
+			( '.' === $dir ? '' : $dir . '/' ) . ( is_string( $original ) ? $original : '' ) => true,
+		);
+
 		$hashes = array();
 		foreach ( (array) ( $file['files'] ?? array() ) as $entry ) {
-			$hashes[] = (string) ( $entry['hash'] ?? '' );
+			if ( $all || isset( $own[ (string) ( $entry['path'] ?? '' ) ] ) ) {
+				$hashes[] = (string) ( $entry['hash'] ?? '' );
+			}
 		}
 		sort( $hashes );
 

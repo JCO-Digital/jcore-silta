@@ -334,13 +334,21 @@ final class Jobs_Controller extends Controller {
 			return new WP_Error( 'jcore_silta_undone', __( 'This sync has already been undone.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
+		// One slice per request: the screen asks again while changes remain.
 		if ( 'target' === $job['role'] ) {
-			return $this->respond( ( new Local( (string) $job['remote_site'] ) )->undo( array( 'job' => $job['uuid'] ) ) );
+			return $this->respond(
+				( new Local( (string) $job['remote_site'] ) )->undo(
+					array(
+						'job'    => $job['uuid'],
+						'budget' => self::budget(),
+					)
+				)
+			);
 		}
 
 		$runner = Runner::load( (int) $job['id'] );
 
-		return $this->respond( is_wp_error( $runner ) ? $runner : $runner->undo() );
+		return $this->respond( is_wp_error( $runner ) ? $runner : $runner->undo( self::budget() ) );
 	}
 
 	/**

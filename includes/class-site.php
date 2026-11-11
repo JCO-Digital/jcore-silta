@@ -42,6 +42,15 @@ final class Site {
 	public const PROTOCOL = 1;
 
 	/**
+	 * What this version understands beyond the first protocol, announced in
+	 * the handshake so a newer site only uses it with a site that has it too:
+	 *
+	 * - `media_batch`: `media/read` and `media/write` take several files (or
+	 *   parts of them) in one request.
+	 */
+	public const FEATURES = array( 'media_batch' );
+
+	/**
 	 * Cached option value for this request: uuid, home (hash) and seen (encoded URL).
 	 *
 	 * @var array<string, string>|null

@@ -57,10 +57,14 @@ final class Exporter {
 			$objects[ $record['key'] ] = $record;
 		}
 
+		// A stub for every reference, also to objects of this same export: the
+		// target imports in batches of its own, and an object referred to may
+		// fail, be left out or come later. Its stub still finds the copy the
+		// target already has, so the reference isn't dropped.
 		$stubs = array();
 		foreach ( $objects as $record ) {
 			foreach ( $record['refs'] as $ref ) {
-				if ( isset( $objects[ $ref ] ) || isset( $stubs[ $ref ] ) ) {
+				if ( isset( $stubs[ $ref ] ) ) {
 					continue;
 				}
 				$stubs[ $ref ] = self::stub( $ref ) ?? array(
@@ -145,6 +149,11 @@ final class Exporter {
 			if ( 'attachment' === $post->post_type ) {
 				$stub['path'] = (string) get_post_meta( $id, '_wp_attached_file', true );
 			}
+			// Tells translations apart when they share a GUID, file or slug.
+			$language = Polylang::post( $id );
+			if ( null !== $language ) {
+				$stub['lang'] = $language['lang'];
+			}
 
 			return $stub;
 		}
@@ -225,6 +234,11 @@ final class Exporter {
 		Walker::walk(
 			$copy,
 			function ( string $kind, int $ref ) use ( &$refs ): int {
+				if ( $ref <= 0 ) {
+					// Never a reference: a key without an ID would make the
+					// whole record malformed for the target.
+					return $ref;
+				}
 				if ( 'user' === $kind ) {
 					$this->user( $ref );
 				} else {

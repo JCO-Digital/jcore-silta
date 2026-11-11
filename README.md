@@ -84,16 +84,16 @@ Jobs\Runner ── Endpoint\Local                     Rest\Remote_Controller
 
 `Endpoint\Endpoint` is the list of operations a site offers (export, plan, import, media transfer, undo…). The runner talks to a source endpoint and a target endpoint; one is `Local`, the other `Remote`, so push and pull share one code path.
 
-A job goes through these steps, each run in time-boxed slices so the admin app can drive it request by request and WP-CLI in a loop:
+A job goes through these steps, each run in time-boxed slices so the admin app can drive it request by request and WP-CLI in a loop. Only one request works on a job at a time: it claims the job row (`Jobs::claim()`), and a second request gets `jcore_silta_busy` and waits, so a retry or a second tab never writes the same batch twice.
 
 1. **Resolve** the selection (posts, whole post types, menus, forms) into job items.
 2. **Export** a batch on the source (`Sync\Exporter`): every object's state (`Sync\State`), the IDs it refers to (`References\Walker`), stubs for referenced objects, the users and ACF fields it mentions.
 3. **Plan** the batch on the target (`Sync\Planner`): match each object to a local one (`Sync\Matcher`: stored mapping → origin → GUID → file path → slug; forms: mapping → origin → same ID and title → title), transform it into local terms (`Sync\Context`: remap IDs, search-replace URLs and rules), compare section by section (`Sync\Differ`), detect conflicts and missing dependencies, check the target can take it (`Sync\Preflight`).
 4. Add the first level of **missing dependencies** and plan those; find **orphans** for whole post types.
 5. **Review** (admin app) or straight on (CLI): include/exclude items, confirm conflicts, pick sections in diff mode, override matches.
-6. **Run**: transfer media in chunks (`Sync\Media`), **import** in batches (`Sync\Importer`: terms, media, forms, posts, menus; dependencies first), snapshot everything changed (`Sync\Snapshots`), record mappings (`Sync\Mapping`), re-import items whose references were created later in the job, trash the chosen orphans.
+6. **Run**: transfer media (`Sync\Media`: all of an attachment's files in one request when they fit a chunk), **import** in batches (`Sync\Importer`: terms, media, forms, posts, menus; dependencies first; what the request's time doesn't reach is handed back and sent again), snapshot everything changed (`Sync\Snapshots`), record mappings (`Sync\Mapping`), re-import items whose references were created later in the job, trash the chosen orphans.
 
-Undo restores the snapshots, removes what the job created and untrashes what it trashed.
+Undo restores the snapshots, removes what the job created and untrashes what it trashed, a slice per request until none remain.
 
 ## Layout
 
@@ -195,6 +195,7 @@ Options: `jcore_silta_settings`, `jcore_silta_site`, `jcore_silta_identity`, `jc
 | `jcore_silta_allow_private_network` | filter | Whether a remote may be on a loopback or private address (default: the same as `jcore_silta_allow_insecure`) |
 | `jcore_silta_max_request_bytes`, `_max_response_bytes`, `_max_export_keys`, `_max_request_objects` | filter | Size limits of signed requests and responses (8 MB, 32 MB, 100, 100) |
 | `jcore_silta_media_max_files`, `_media_max_bytes`, `_media_max_open_transfers` | filter | Media transfer limits (256 files, 5 GB, 10,000 open per site) |
+| `jcore_silta_media_share_translations` | filter | Whether a synced media translation shares its translation's file instead of getting a copy (default: where Polylang translates media) |
 | `jcore_silta_remote_url` | filter | Rewrite the URL of a request to a remote (the dev stack maps localhost ports to container names) |
 | `jcore_silta_clone_detected` | action | Fires when Silta notices it runs on a copy of another site's database |
 | `jcore_silta_post_state`, `_export_object`, `_walk_post`, `_post_sections`, `_match_post`, `_match_by_slug`, `_preflight`, `_plan_notes` | filter | Integration hooks: what a post's state holds, what an export carries beyond it (`companions`, `extra`), the IDs in an integration's own data, extra diff sections, extra matching steps, problems and plan notes (see the docblocks where they are applied) |
