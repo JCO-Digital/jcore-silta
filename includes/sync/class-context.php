@@ -196,15 +196,21 @@ final class Context {
 	 * @return string|null Error, or null when the structure is valid.
 	 */
 	public static function record_error( mixed $record, bool $stub = false ): ?string {
-		$error = __( 'Malformed bundle record: invalid field types or object key.', 'jcore-silta' );
+		// Names the part that is wrong: "malformed" alone leaves nothing to go on
+		// when one odd value keeps a post from syncing.
+		$bad = static fn( string $part ): string => sprintf(
+			/* translators: %s: name of the invalid part of the record, e.g. refs. */
+			__( 'Malformed bundle record: invalid “%s”.', 'jcore-silta' ),
+			$part
+		);
 		if ( ! is_array( $record ) || ! is_string( $record['key'] ?? null ) || ! preg_match( '/^(post|term|menu|form):[1-9][0-9]*$/', $record['key'] ) ) {
-			return $error;
+			return $bad( 'key' );
 		}
 		if ( $stub && true === ( $record['missing'] ?? false ) ) {
 			return null;
 		}
 		if ( ! in_array( $record['type'] ?? null, array( 'post', 'term', 'menu', 'form' ), true ) || ! is_int( $record['id'] ?? null ) || $record['id'] <= 0 || $record['key'] !== Util::key( $record['type'], $record['id'] ) ) {
-			return $error;
+			return $bad( 'type' );
 		}
 		$required = match ( $record['type'] ) {
 			'post' => array( 'post_type' ),
@@ -216,87 +222,87 @@ final class Context {
 			$required[] = 'hash';
 			$required[] = 'post' === $record['type'] ? 'content' : ( 'term' === $record['type'] ? 'description' : 'name' );
 		}
-		foreach ( array_unique( array_merge( $required, array( 'title', 'guid', 'modified_gmt', 'path', 'post_name', 'status' ) ) ) as $key ) {
+		foreach ( array_unique( array_merge( $required, array( 'title', 'guid', 'modified_gmt', 'path', 'post_name', 'status', 'lang' ) ) ) as $key ) {
 			if ( ( in_array( $key, $required, true ) || array_key_exists( $key, $record ) ) && ! is_string( $record[ $key ] ?? null ) ) {
-				return $error;
+				return $bad( $key );
 			}
 		}
 		foreach ( array( 'parent', 'depth', 'featured_image' ) as $key ) {
 			if ( isset( $record[ $key ] ) && ( ! is_int( $record[ $key ] ) || $record[ $key ] < 0 ) ) {
-				return $error;
+				return $bad( $key );
 			}
 		}
 		foreach ( array( 'meta', 'meta_groups', 'group_labels', 'terms', 'fields', 'file', 'settings', 'confirmations', 'notifications' ) as $key ) {
 			if ( isset( $record[ $key ] ) && ! is_array( $record[ $key ] ) ) {
-				return $error;
+				return $bad( $key );
 			}
 		}
 		if ( ! self::valid_meta( $record['meta'] ?? array() ) ) {
-			return $error;
+			return $bad( 'meta' );
 		}
 		foreach ( array( 'meta_groups', 'group_labels' ) as $map ) {
 			foreach ( $record[ $map ] ?? array() as $key => $value ) {
 				if ( ! is_string( $key ) || ! is_string( $value ) ) {
-					return $error;
+					return $bad( $map );
 				}
 			}
 		}
 		if ( isset( $record['origins'] ) ) {
 			if ( ! is_array( $record['origins'] ) || ! array_is_list( $record['origins'] ) ) {
-				return $error;
+				return $bad( 'origins' );
 			}
 			foreach ( $record['origins'] as $origin ) {
 				if ( ! is_array( $origin ) || ! is_string( $origin['site'] ?? null ) || ! is_int( $origin['id'] ?? null ) || $origin['id'] <= 0 ) {
-					return $error;
+					return $bad( 'origins' );
 				}
 			}
 		}
 		if ( isset( $record['refs'] ) ) {
 			if ( ! is_array( $record['refs'] ) || ! array_is_list( $record['refs'] ) ) {
-				return $error;
+				return $bad( 'refs' );
 			}
 			foreach ( $record['refs'] as $ref ) {
 				if ( ! is_string( $ref ) || ! preg_match( '/^(post|term|form):[1-9][0-9]*$/', $ref ) ) {
-					return $error;
+					return $bad( 'refs: ' . ( is_string( $ref ) ? $ref : '?' ) );
 				}
 			}
 		}
 		if ( isset( $record['companions'] ) ) {
 			if ( ! is_array( $record['companions'] ) ) {
-				return $error;
+				return $bad( 'companions' );
 			}
 			foreach ( $record['companions'] as $post_type => $ids ) {
 				if ( ! is_string( $post_type ) || ! is_array( $ids ) || ! array_is_list( $ids ) ) {
-					return $error;
+					return $bad( 'companions' );
 				}
 				foreach ( $ids as $id ) {
 					if ( ! is_int( $id ) || $id <= 0 ) {
-						return $error;
+						return $bad( 'companions' );
 					}
 				}
 			}
 		}
 		if ( isset( $record['extra'] ) && ! is_array( $record['extra'] ) ) {
-			return $error;
+			return $bad( 'extra' );
 		}
 		if ( isset( $record['language'] ) ) {
 			$language = $record['language'];
 			if ( ! is_array( $language ) || ! is_string( $language['lang'] ?? null ) || ! is_array( $language['translations'] ?? null ) ) {
-				return $error;
+				return $bad( 'language' );
 			}
 			foreach ( $language['translations'] as $lang => $id ) {
 				if ( ! is_string( $lang ) || ! is_int( $id ) || $id <= 0 ) {
-					return $error;
+					return $bad( 'language' );
 				}
 			}
 		}
 		foreach ( $record['terms'] ?? array() as $taxonomy => $ids ) {
 			if ( ! is_string( $taxonomy ) || ! is_array( $ids ) || ! array_is_list( $ids ) ) {
-				return $error;
+				return $bad( 'terms' );
 			}
 			foreach ( $ids as $id ) {
 				if ( ! is_int( $id ) || $id <= 0 ) {
-					return $error;
+					return $bad( 'terms' );
 				}
 			}
 		}
@@ -314,57 +320,57 @@ final class Context {
 					default => is_string( $value ),
 				};
 				if ( ! $valid ) {
-					return $error;
+					return $bad( 'fields.' . $key );
 				}
 			}
 		}
 		if ( 'form' === $record['type'] && ! $stub ) {
 			if ( ! is_bool( $record['active'] ?? null ) || ! is_array( $record['settings'] ?? null ) || ! is_array( $record['fields'] ?? null ) || ! array_is_list( $record['fields'] ) || ! is_array( $record['confirmations'] ?? null ) || ! is_array( $record['notifications'] ?? null ) ) {
-				return $error;
+				return $bad( 'form' );
 			}
 			foreach ( array( 'fields', 'confirmations', 'notifications' ) as $list ) {
 				foreach ( $record[ $list ] as $item ) {
 					if ( ! is_array( $item ) ) {
-						return $error;
+						return $bad( 'form' );
 					}
 				}
 			}
 			foreach ( $record['confirmations'] as $confirmation ) {
 				if ( isset( $confirmation['pageId'] ) && ! is_int( $confirmation['pageId'] ) && ! is_string( $confirmation['pageId'] ) ) {
-					return $error;
+					return $bad( 'confirmations' );
 				}
 			}
 		}
 		if ( 'menu' === $record['type'] && ! $stub ) {
 			if ( ! is_array( $record['items'] ?? null ) || ! array_is_list( $record['items'] ) || ! is_array( $record['locations'] ?? null ) || ! array_is_list( $record['locations'] ) ) {
-				return $error;
+				return $bad( 'menu' );
 			}
 			foreach ( $record['locations'] as $location ) {
 				if ( ! is_string( $location ) ) {
-					return $error;
+					return $bad( 'locations' );
 				}
 			}
 			$ids = array();
 			foreach ( $record['items'] as $item ) {
 				if ( ! is_array( $item ) || ! self::valid_meta( $item['meta'] ?? array() ) ) {
-					return $error;
+					return $bad( 'items' );
 				}
 				foreach ( array( 'id', 'object_id', 'parent', 'position' ) as $key ) {
 					if ( ! is_int( $item[ $key ] ?? null ) || $item[ $key ] < ( 'id' === $key ? 1 : 0 ) ) {
-						return $error;
+						return $bad( 'items' );
 					}
 				}
 				if ( isset( $ids[ $item['id'] ] ) ) {
-					return $error;
+					return $bad( 'items' );
 				}
 				$ids[ $item['id'] ] = true;
 				foreach ( array( 'title', 'item_type', 'object', 'url', 'target', 'attr_title', 'description', 'classes', 'xfn', 'status' ) as $key ) {
 					if ( ! is_string( $item[ $key ] ?? null ) ) {
-						return $error;
+						return $bad( 'items' );
 					}
 				}
 				if ( ! in_array( $item['item_type'], array( 'custom', 'post_type', 'taxonomy', 'post_type_archive' ), true ) ) {
-					return $error;
+					return $bad( 'items' );
 				}
 			}
 		}
@@ -469,7 +475,9 @@ final class Context {
 			return $this->resolved[ $key ];
 		}
 
-		$row = Mapping::get( $this->site, $kind, $id );
+		// A target chosen by hand comes before the copy an earlier sync mapped.
+		$chosen = isset( $this->options['overrides'][ $key ] );
+		$row    = $chosen ? null : Mapping::get( $this->site, $kind, $id );
 		if ( null !== $row && $this->exists( $kind, (int) $row['local_id'] ) ) {
 			$this->resolved[ $key ] = (int) $row['local_id'];
 
@@ -483,8 +491,11 @@ final class Context {
 
 				return null;
 			}
-			$match = isset( $this->objects[ $key ] ) ? $this->match( $info ) : $this->matcher->match( $info );
-			if ( null !== $match && $this->override_ok( $info, $match['id'] ) ) {
+			// The same way for an object of this bundle and for a stub, which
+			// may stand for an object of the job in another batch: a target
+			// chosen for it by hand (or "create new") counts here too.
+			$match = $this->match( $info );
+			if ( null !== $match ) {
 				$this->resolved[ $key ] = $match['id'];
 
 				return $match['id'];

@@ -734,17 +734,27 @@ final class Runner {
 			ARRAY_FILTER_USE_BOTH
 		);
 
+		// Why a record the source did send was turned down, by key.
+		$problems = array();
+		foreach ( (array) ( $bundle['objects'] ?? array() ) as $sent ) {
+			$problem = Context::record_error( $sent );
+			if ( null !== $problem && is_array( $sent ) && is_string( $sent['key'] ?? null ) ) {
+				$problems[ $sent['key'] ] = $problem;
+			}
+		}
+
 		$planned = array();
 		foreach ( $items as $item ) {
 			$record = $objects[ $item['key'] ] ?? null;
 			if ( null === $record ) {
+				// The source says why when it can, e.g. "Gravity Forms is not active".
+				$error = $bundle['errors'][ $item['key'] ] ?? $problems[ $item['key'] ] ?? null;
 				Jobs::update_item(
 					(int) $item['id'],
 					array(
 						'status'   => 'failed',
 						'included' => false,
-						// The source says why when it can, e.g. "Gravity Forms is not active".
-						'result'   => array( 'error' => is_string( $bundle['errors'][ $item['key'] ] ?? null ) ? sanitize_text_field( $bundle['errors'][ $item['key'] ] ) : __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
+						'result'   => array( 'error' => is_string( $error ) ? sanitize_text_field( $error ) : __( 'The source did not return a valid record for this requested object.', 'jcore-silta' ) ),
 					)
 				);
 				continue;
