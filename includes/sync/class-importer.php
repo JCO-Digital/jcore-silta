@@ -539,9 +539,20 @@ final class Importer {
 			return $id;
 		}
 
-		$this->finish_file( (int) $id, $incoming, $files );
+		if ( ! empty( $files['shared'] ) ) {
+			// A copy of its translation's attachment, as Polylang makes them:
+			// the same file with the same sizes, so nothing is generated.
+			wp_update_attachment_metadata( (int) $id, (array) $files['metadata'] );
+		} else {
+			$this->finish_file( (int) $id, $incoming, $files );
+		}
 
-		return array( (int) $id, array( 'files' => self::renamed( $files['map'] ) ) );
+		$extra = self::received( (int) $id, $files, $record );
+		if ( ! empty( $files['shared'] ) ) {
+			$extra['shared'] = (int) $files['shared'];
+		}
+
+		return array( (int) $id, $extra );
 	}
 
 	/**
@@ -579,7 +590,30 @@ final class Importer {
 		update_attached_file( $id, Media::basedir() . '/' . $files['main'] );
 		$this->finish_file( $id, $incoming, $files );
 
-		return array( 'files' => self::renamed( $files['map'] ) );
+		return self::received( $id, $files, $record );
+	}
+
+	/**
+	 * Builds what is stored with an attachment's mapping when its file
+	 * arrived: the files that got another name here, and for which local
+	 * attachment and with which bytes the other site delivered them. The
+	 * second is what lets a translation share the file later, see
+	 * Media::sibling().
+	 *
+	 * @param int                  $id     Local attachment ID.
+	 * @param array<string, mixed> $files  Finalized transfer.
+	 * @param array<string, mixed> $record Incoming attachment, as received.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function received( int $id, array $files, array $record ): array {
+		return array(
+			'files'    => self::renamed( (array) $files['map'] ),
+			'received' => array(
+				'local'  => $id,
+				'hashes' => State::file_hashes( is_array( $record['file'] ?? null ) ? $record['file'] : null ),
+			),
+		);
 	}
 
 	/**

@@ -137,7 +137,10 @@ final class Mapping {
 			'local_id'    => $local_id,
 			'remote_hash' => $remote_hash,
 			'local_hash'  => $local_hash,
-			'extra'       => null === $extra ? ( null === $existing ? null : Util::encode( $existing['extra'] ) ) : Util::encode( $extra ),
+			// What is known about the local object (an attachment's files, and
+			// that they came from that site) stays with it: when the row moves
+			// to another local object, it doesn't come along.
+			'extra'       => null === $extra ? ( null === $existing || (int) $existing['local_id'] !== $local_id ? null : Util::encode( $existing['extra'] ) ) : Util::encode( $extra ),
 			'synced_at'   => Util::now(),
 		);
 

@@ -280,19 +280,20 @@ final class Snapshots {
 	 *
 	 * @param string $type     post, term, menu or form.
 	 * @param int    $local_id Local ID.
+	 * @param bool   $shared   Whether an attachment was created on another one's files.
 	 *
 	 * @return void
 	 */
-	private static function remove( string $type, int $local_id ): void {
+	private static function remove( string $type, int $local_id, bool $shared = false ): void {
 		if ( 'post' === $type ) {
 			$post = get_post( $local_id );
 			if ( ! $post instanceof \WP_Post ) {
 				return;
 			}
 			if ( 'attachment' === $post->post_type ) {
-				// Safe to delete with its files: Media::prepare() gives a new
-				// attachment its own copies and never reuses an existing upload.
-				wp_delete_attachment( $local_id, true );
+				// With its files when Media::prepare() gave it copies of its
+				// own. One created on a translation's files leaves them.
+				Media::delete_attachment( $local_id, $shared );
 			} else {
 				wp_trash_post( $local_id );
 			}

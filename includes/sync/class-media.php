@@ -314,9 +314,18 @@ final class Media {
 				return self::limit_error();
 			}
 
-			// A new transfer always places its own copies; undo must never own a
-			// file merely because its bytes happen to match an existing upload.
-			foreach ( $files as $entry ) {
+			// A translation of an attachment that is here already, with the same
+			// file: it shares that file, as on the source. Nothing is sent.
+			$sibling = 0 === $local_id ? self::sibling( $record, $peer ) : null;
+			$shared  = null === $sibling ? null : self::shared_files( $files, $main, $file, $sibling['file'] );
+			if ( null !== $shared ) {
+				$files = $shared;
+			}
+
+			// Otherwise a new transfer always places its own copies; undo must
+			// never own a file merely because its bytes happen to match an
+			// existing upload.
+			foreach ( null === $shared ? $files : array() as $entry ) {
 				if ( file_exists( self::basedir() . '/' . $entry['target'] ) ) {
 					$files = self::rename( $files, $main, is_array( $file['metadata'] ?? null ) ? $file['metadata'] : array() );
 					break;
@@ -345,6 +354,8 @@ final class Media {
 				'metadata' => $metadata,
 				'files'    => array_values( $files ),
 				'created'  => time(),
+				// The local attachment whose files this one shares, or 0.
+				'shared'   => null === $shared ? 0 : $sibling['id'],
 			);
 			$saved    = $wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- One server-owned manifest per transfer.
 				Database::table( 'transfers' ),
@@ -368,7 +379,7 @@ final class Media {
 					static fn( array $entry ): array => array(
 						'path'   => $entry['source'],
 						'size'   => $entry['size'],
-						'needed' => true,
+						'needed' => (bool) $entry['needed'],
 					),
 					$manifest['files']
 				),
@@ -471,8 +482,6 @@ final class Media {
 	 * @return array<string, mixed>|WP_Error Validated files, MIME type and metadata.
 	 */
 	public static function finalize( string $transfer, string $peer, array $record, int $local_id = 0 ): array|WP_Error {
-		global $wpdb;
-
 		$manifest = self::manifest( $transfer, $peer, (int) ( $record['id'] ?? 0 ) );
 		if ( is_wp_error( $manifest ) ) {
 			return $manifest;
@@ -487,6 +496,43 @@ final class Media {
 			}
 			if ( $manifest['record'] !== self::record_key( $record ) || $manifest['local_id'] !== $local_id ) {
 				return new WP_Error( 'jcore_silta_transfer_record', __( 'The transfer belongs to another attachment.', 'jcore-silta' ), array( 'status' => 403 ) );
+			}
+
+			// A translation with the same file is here: it arrived earlier in
+			// this sync, or was here when the transfer opened. The attachment
+			// shares its file, and what was received for it is dropped.
+			$sibling = 0 === $local_id ? self::sibling( $record, $peer ) : null;
+			$shared  = null === $sibling ? null : self::shared_map( (array) $record['file'], $sibling['file'] );
+			if ( null !== $shared ) {
+				$mime = self::file_type( $sibling['file']['path'] );
+				if ( null === $mime ) {
+					return self::invalid_type();
+				}
+				$consumed = self::consume( $transfer );
+				if ( is_wp_error( $consumed ) ) {
+					return $consumed;
+				}
+				self::delete_dir( (string) self::staged_path( $transfer ) );
+
+				return array(
+					'main'     => $sibling['file']['path'],
+					'map'      => $shared,
+					'mime'     => $mime,
+					'metadata' => $sibling['file']['metadata'],
+					'shared'   => $sibling['id'],
+				);
+			}
+			if ( ! empty( $manifest['shared'] ) ) {
+				// It was to share a translation's file, so no bytes were sent, and
+				// that translation is gone or has another file now. The files
+				// have to come after all.
+				$consumed = self::consume( $transfer );
+				if ( is_wp_error( $consumed ) ) {
+					return $consumed;
+				}
+				self::delete_dir( (string) self::staged_path( $transfer ) );
+
+				return self::missing_transfer();
 			}
 
 			// A file took one of the places since the transfer opened: another
@@ -533,14 +579,9 @@ final class Media {
 			}
 
 			// Exactly one finalizer may consume the row before moving any files.
-			$deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic single-use transfer consumption.
-				$wpdb->prepare( 'DELETE FROM %i WHERE transfer = %s', Database::table( 'transfers' ), $transfer )
-			);
-			if ( false === $deleted ) {
-				return self::busy();
-			}
-			if ( 1 !== $deleted ) {
-				return self::missing_transfer();
+			$consumed = self::consume( $transfer );
+			if ( is_wp_error( $consumed ) ) {
+				return $consumed;
 			}
 			$published = array();
 			foreach ( $manifest['files'] as $entry ) {
@@ -772,6 +813,245 @@ final class Media {
 		}
 
 		return $files;
+	}
+
+	/**
+	 * Deletes a transfer's row, which only one request can do: the one that
+	 * goes on to use the transfer.
+	 *
+	 * @param string $transfer Transfer ID.
+	 *
+	 * @return true|WP_Error
+	 */
+	private static function consume( string $transfer ): bool|WP_Error {
+		global $wpdb;
+
+		$deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic single-use transfer consumption.
+			$wpdb->prepare( 'DELETE FROM %i WHERE transfer = %s', Database::table( 'transfers' ), $transfer )
+		);
+		if ( false === $deleted ) {
+			return self::busy();
+		}
+
+		return 1 === $deleted ? true : self::missing_transfer();
+	}
+
+	/**
+	 * Whether a new attachment may share the file of its translation instead
+	 * of getting a copy of its own.
+	 *
+	 * Only where Polylang translates media: it makes a media translation as a
+	 * second attachment on the same file, and refuses to delete a file that
+	 * another attachment still uses. Without that, deleting one copy in the
+	 * media library would take the file from the other.
+	 *
+	 * @return bool
+	 */
+	public static function shares_translations(): bool {
+		/**
+		 * Filters whether synced media translations share one file, as
+		 * Polylang's own do. Return false to give every attachment its own
+		 * copy of the files.
+		 *
+		 * @param bool $share Whether to share: true when Polylang translates media here.
+		 */
+		return (bool) apply_filters( 'jcore_silta_media_share_translations', Polylang::media_translations() );
+	}
+
+	/**
+	 * Finds a local attachment an incoming one can share its file with. All of
+	 * this has to hold, and none of it rests on the other site's word alone:
+	 *
+	 * - The source lists it as the attachment's translation in another
+	 *   language, and the local attachment is in that language.
+	 * - This site got that attachment's file from the same site: a sync
+	 *   created it, or replaced its file. A mapping alone is not enough,
+	 *   since any attachment can be mapped by matching it. When bytes arrive,
+	 *   the mapping records for which local attachment and with which hashes
+	 *   (`extra.received`), and both have to be the ones at hand.
+	 * - The uploaded file (and its unscaled original) has those same bytes,
+	 *   hashed from disk now.
+	 *
+	 * So an upload that merely has the same name or content, or that the
+	 * other site only claims as a translation, is never taken over.
+	 *
+	 * @param array<string, mixed> $record Incoming attachment, as received.
+	 * @param string               $peer   Verified source site UUID.
+	 *
+	 * @return array{id: int, file: array<string, mixed>}|null The local attachment and its files.
+	 */
+	public static function sibling( array $record, string $peer ): ?array {
+		$file         = $record['file'] ?? null;
+		$own          = $record['language']['lang'] ?? null;
+		$translations = $record['language']['translations'] ?? null;
+		if ( '' === $peer || ! is_array( $file ) || ! is_string( $own ) || '' === $own || ! is_array( $translations ) || empty( $translations ) || ! self::shares_translations() ) {
+			return null;
+		}
+
+		$wanted = State::file_hashes( $file );
+		if ( empty( $wanted ) || in_array( '', $wanted, true ) ) {
+			return null;
+		}
+
+		foreach ( $translations as $lang => $remote_id ) {
+			if ( ! is_string( $lang ) || '' === $lang || $lang === $own || ! is_int( $remote_id ) || $remote_id < 1 || $remote_id === ( $record['id'] ?? 0 ) ) {
+				continue;
+			}
+			$row      = Mapping::get( $peer, 'post', $remote_id );
+			$received = $row['extra']['received'] ?? null;
+			$local    = is_array( $received ) && (int) ( $received['local'] ?? 0 ) === (int) $row['local_id'] && ( $received['hashes'] ?? null ) === $wanted ? (int) $row['local_id'] : 0;
+			$post     = $local > 0 ? get_post( $local ) : null;
+			if ( ! $post instanceof \WP_Post || 'attachment' !== $post->post_type || 'trash' === ( $post->post_status ?? '' ) || ( Polylang::post( $local )['lang'] ?? '' ) !== $lang ) {
+				continue;
+			}
+
+			// With hashes: the bytes on disk now, not what a mapping remembers.
+			$described = self::describe( $local );
+			if ( null !== $described && State::file_hashes( $described ) === $wanted ) {
+				return array(
+					'id'   => $local,
+					'file' => $described,
+				);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Maps an incoming attachment's files to those of the translation it
+	 * shares them with: the uploaded file, its unscaled original, and each
+	 * size both of them have. Content that points at one of the source's
+	 * files is rewritten with this.
+	 *
+	 * @param array<string, mixed> $file    Incoming file description.
+	 * @param array<string, mixed> $sibling The local translation's file description.
+	 *
+	 * @return array<string, string>|null Source path => local path, or null when the files can't be shared.
+	 */
+	private static function shared_map( array $file, array $sibling ): ?array {
+		$from = is_string( $file['path'] ?? null ) ? $file['path'] : '';
+		$to   = is_string( $sibling['path'] ?? null ) ? $sibling['path'] : '';
+		if ( '' === $from || '' === $to || null === self::clean_path( $from ) ) {
+			return null;
+		}
+
+		$here  = array_flip( array_column( (array) ( $sibling['files'] ?? array() ), 'path' ) );
+		$dir   = static fn( string $path ): string => '.' === dirname( $path ) ? '' : dirname( $path ) . '/';
+		$pairs = array( array( $from, $to ) );
+
+		$theirs = is_array( $file['metadata'] ?? null ) ? $file['metadata'] : array();
+		$ours   = is_array( $sibling['metadata'] ?? null ) ? $sibling['metadata'] : array();
+		if ( is_string( $theirs['original_image'] ?? null ) && is_string( $ours['original_image'] ?? null ) ) {
+			$pairs[] = array( $dir( $from ) . $theirs['original_image'], $dir( $to ) . $ours['original_image'] );
+		}
+		foreach ( (array) ( $theirs['sizes'] ?? array() ) as $name => $size ) {
+			$local = $ours['sizes'][ $name ]['file'] ?? null;
+			if ( is_array( $size ) && is_string( $size['file'] ?? null ) && is_string( $local ) ) {
+				$pairs[] = array( $dir( $from ) . $size['file'], $dir( $to ) . $local );
+			}
+		}
+
+		$map  = array();
+		$used = array();
+		foreach ( $pairs as $pair ) {
+			// Only files that are on disk for the translation, each given once.
+			if ( isset( $map[ $pair[0] ] ) || isset( $used[ $pair[1] ] ) || ! isset( $here[ $pair[1] ] ) || null === self::clean_path( $pair[0] ) || null === self::upload_path( $pair[1] ) ) {
+				continue;
+			}
+			$map[ $pair[0] ]  = $pair[1];
+			$used[ $pair[1] ] = true;
+		}
+
+		return isset( $map[ $from ] ) ? $map : null;
+	}
+
+	/**
+	 * Points a transfer's files at the files of the translation they are
+	 * shared with, none of them to be sent. Files of the incoming attachment
+	 * the translation has no counterpart for are left out.
+	 *
+	 * @param array<string, array<string, mixed>> $files   Files keyed by source path.
+	 * @param string                              $main    Source path of the uploaded file.
+	 * @param array<string, mixed>                $file    Incoming file description.
+	 * @param array<string, mixed>                $sibling The local translation's file description.
+	 *
+	 * @return array<string, array<string, mixed>>|null Null when the files can't be shared.
+	 */
+	private static function shared_files( array $files, string $main, array $file, array $sibling ): ?array {
+		$map = self::shared_map( $file, $sibling );
+		if ( null === $map || ! isset( $map[ $main ], $files[ $main ] ) ) {
+			return null;
+		}
+
+		$shared = array();
+		foreach ( $files as $source => $entry ) {
+			if ( isset( $map[ $source ] ) ) {
+				$entry['target']   = $map[ $source ];
+				$entry['needed']   = false;
+				$shared[ $source ] = $entry;
+			}
+		}
+
+		return $shared;
+	}
+
+	/**
+	 * Deletes an attachment a sync created, with the files that sync brought
+	 * for it. Files are kept when the attachment was created on the files of
+	 * a translation (they were never its own, whatever points at them by
+	 * now), and while another attachment has the same file.
+	 *
+	 * @param int  $id     Attachment ID.
+	 * @param bool $shared Whether it was created sharing another attachment's files.
+	 *
+	 * @return void
+	 */
+	public static function delete_attachment( int $id, bool $shared = false ): void {
+		if ( ! $shared && ! self::file_in_use( $id ) ) {
+			wp_delete_attachment( $id, true );
+
+			return;
+		}
+
+		// WordPress asks this filter about every file it is about to delete,
+		// and leaves alone what comes back empty.
+		$keep = static fn(): string => '';
+		add_filter( 'wp_delete_file', $keep, PHP_INT_MAX );
+		try {
+			wp_delete_attachment( $id, true );
+		} finally {
+			remove_filter( 'wp_delete_file', $keep, PHP_INT_MAX );
+		}
+	}
+
+	/**
+	 * Whether another attachment has the same uploaded file, stored relative
+	 * to uploads or, as old attachments have it, as a full path.
+	 *
+	 * @param int $id Attachment ID.
+	 *
+	 * @return bool
+	 */
+	public static function file_in_use( int $id ): bool {
+		global $wpdb;
+
+		$path = State::single_raw_meta( $id, '_wp_attached_file' );
+		if ( null === $path || '' === $path ) {
+			return false;
+		}
+		$basedir  = self::basedir() . '/';
+		$relative = str_starts_with( $path, $basedir ) ? substr( $path, strlen( $basedir ) ) : $path;
+
+		return (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Must be current: it decides whether files are deleted.
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i WHERE meta_key = '_wp_attached_file' AND meta_value IN ( %s, %s ) AND post_id <> %d",
+				$wpdb->postmeta,
+				$relative,
+				$basedir . $relative,
+				$id
+			)
+		) > 0;
 	}
 
 	/**

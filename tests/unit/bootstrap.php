@@ -176,6 +176,19 @@ if ( ! function_exists( 'remove_action' ) ) {
 		return true;
 	}
 }
+if ( ! function_exists( 'remove_filter' ) ) {
+	/**
+	 * Removes a filter callback.
+	 *
+	 * @param string $hook     Hook.
+	 * @param mixed  $callback Callback.
+	 * @param int    $priority Priority.
+	 * @return bool
+	 */
+	function remove_filter( string $hook, mixed $callback, int $priority = 10 ): bool {
+		return remove_action( $hook, $callback, $priority );
+	}
+}
 if ( ! function_exists( 'do_action' ) ) {
 	/**
 	 * Runs a hook's callbacks by priority, re-reading the registry after each

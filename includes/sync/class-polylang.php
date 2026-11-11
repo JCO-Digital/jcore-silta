@@ -31,6 +31,24 @@ final class Polylang {
 	}
 
 	/**
+	 * Whether Polylang translates media here: every attachment then has a copy
+	 * per language that shares its file, and Polylang keeps that file while
+	 * any of the copies still uses it.
+	 *
+	 * @return bool
+	 */
+	public static function media_translations(): bool {
+		if ( ! self::active() || ! function_exists( 'PLL' ) ) {
+			return false;
+		}
+
+		$polylang = PLL();
+		$options  = is_object( $polylang ) ? ( $polylang->options ?? null ) : null;
+
+		return ( is_array( $options ) || $options instanceof \ArrayAccess ) && ! empty( $options['media_support'] );
+	}
+
+	/**
 	 * Returns the language slugs this site has.
 	 *
 	 * @return string[]
