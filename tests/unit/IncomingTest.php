@@ -72,54 +72,8 @@ final class IncomingTest extends TestCase {
 	}
 
 	public function test_rejected_keys_are_not_deleted_or_partially_written(): void {
-		$GLOBALS['wpdb'] = new class() { // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolated fake database for raw-write assertions.
-			/**
-			 * Post meta table.
-			 *
-			 * @var string
-			 */
-			public string $postmeta = 'postmeta';
-			/**
-			 * Term meta table.
-			 *
-			 * @var string
-			 */
-			public string $termmeta = 'termmeta';
-			/**
-			 * Captured deletes.
-			 *
-			 * @var array
-			 */
-			public array $deleted = array();
-			/**
-			 * Captured inserts.
-			 *
-			 * @var array
-			 */
-			public array $inserted = array();
-
-			/**
-			 * Captures deletes.
-			 *
-			 * @param string $table Table.
-			 * @param array  $where Conditions.
-			 * @return void
-			 */
-			public function delete( string $table, array $where ): void {
-				$this->deleted[] = $where['meta_key'];
-			}
-
-			/**
-			 * Captures inserts.
-			 *
-			 * @param string $table Table.
-			 * @param array  $data  Row.
-			 * @return void
-			 */
-			public function insert( string $table, array $data ): void {
-				$this->inserted[ $data['meta_key'] ][] = $data['meta_value'];
-			}
-		};
+		require_once __DIR__ . '/stubs/MetaDatabaseStub.php';
+		$GLOBALS['wpdb'] = new MetaDatabaseStub(); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolated fake database for raw-write assertions.
 		$values          = array(
 			'good'                    => array( serialize( array( 'hello' ) ) ),
 			'_hero'                   => array( 'field_image' ),

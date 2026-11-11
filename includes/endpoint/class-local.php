@@ -75,6 +75,7 @@ final class Local extends Endpoint {
 			'gravity_forms' => Gravity_Forms::active(),
 			'forms'         => Gravity_Forms::all(),
 			'undo_days'     => (int) Settings::get( 'snapshot_days' ),
+			'features'      => Site::FEATURES,
 		);
 	}
 
@@ -111,6 +112,20 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_read( array $args ): array|WP_Error {
+		if ( isset( $args['files'] ) ) {
+			$files = $args['files'];
+			if ( ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_int( $args['length'] ?? null ) || ! is_array( $files ) || ! array_is_list( $files ) || empty( $files ) || count( $files ) > Media::BATCH_FILES ) {
+				return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+			foreach ( $files as $file ) {
+				if ( ! is_array( $file ) || ! is_string( $file['path'] ?? null ) || ! is_int( $file['offset'] ?? null ) ) {
+					return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+				}
+			}
+
+			return Media::read_many( $args['id'], $files, $args['length'] );
+		}
+
 		if ( ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_int( $args['length'] ?? null ) ) {
 			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}
@@ -166,6 +181,29 @@ final class Local extends Endpoint {
 	 * @param array<string, mixed> $args Arguments.
 	 */
 	public function media_write( array $args ): array|WP_Error {
+		if ( isset( $args['chunks'] ) ) {
+			$chunks = $args['chunks'];
+			if ( ! is_string( $args['transfer'] ?? null ) || ! is_int( $args['id'] ?? null ) || $args['id'] < 1 || ! is_array( $chunks ) || ! array_is_list( $chunks ) || empty( $chunks ) || count( $chunks ) > Media::BATCH_FILES ) {
+				return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+			}
+
+			// In the order sent. An error ends the batch; what was written
+			// before it stays staged, and the sender carries on from there.
+			$files = array();
+			foreach ( $chunks as $chunk ) {
+				if ( ! is_array( $chunk ) || ! is_string( $chunk['path'] ?? null ) || ! is_int( $chunk['offset'] ?? null ) || ! is_string( $chunk['data'] ?? null ) ) {
+					return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
+				}
+				$written = Media::write( $args['transfer'], $chunk['path'], $chunk['offset'], $chunk['data'], $this->peer, $args['id'] );
+				if ( is_wp_error( $written ) ) {
+					return $written;
+				}
+				$files[] = array( 'path' => $chunk['path'] ) + $written;
+			}
+
+			return array( 'files' => $files );
+		}
+
 		if ( ! is_string( $args['transfer'] ?? null ) || ! is_string( $args['path'] ?? null ) || ! is_int( $args['offset'] ?? null ) || ! is_string( $args['data'] ?? null ) || ! is_int( $args['id'] ?? null ) || $args['id'] < 1 ) {
 			return new WP_Error( 'jcore_silta_bad_chunk', __( 'The file chunk request is invalid.', 'jcore-silta' ), array( 'status' => 400 ) );
 		}

@@ -13,6 +13,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'JCORE_SILTA_PATH', dirname( __DIR__, 2 ) . '/' );
 define( 'JCORE_SILTA_VERSION', '0.0.0' );
+define( 'KB_IN_BYTES', 1024 );
 
 require JCORE_SILTA_PATH . 'vendor/autoload.php';
 

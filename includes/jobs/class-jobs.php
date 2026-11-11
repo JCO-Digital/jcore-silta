@@ -368,7 +368,9 @@ final class Jobs {
 	 *
 	 * @param int                  $job_id Job ID.
 	 * @param array<string, mixed> $where  Column filters (status, level, included, object_type, subtype); arrays mean IN.
-	 * @param array<string, mixed> $args   limit, offset, order (`id` or `import`), payload (include the payload column).
+	 * @param array<string, mixed> $args   limit, offset, order (`id` or `import`), payload (include the payload column),
+	 *                                     light (leave out the plan too: for passes over a whole job that only
+	 *                                     need what happened to each item), after (only items with a higher ID).
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
@@ -376,9 +378,20 @@ final class Jobs {
 		global $wpdb;
 
 		list( $sql, $params ) = self::where( $job_id, $where );
-		$columns              = empty( $args['payload'] ) ? 'id, job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, owner, conflict, confirmed, sections, override, plan, result' : '*';
-		$order                = 'import' === ( $args['order'] ?? '' ) ? 'position ASC, id ASC' : 'level ASC, id ASC';
-		$limit                = isset( $args['limit'] ) ? $wpdb->prepare( ' LIMIT %d OFFSET %d', (int) $args['limit'], (int) ( $args['offset'] ?? 0 ) ) : '';
+		if ( isset( $args['after'] ) ) {
+			$sql     .= ' AND id > %d';
+			$params[] = (int) $args['after'];
+		}
+		$columns = empty( $args['payload'] ) ? 'id, job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, owner, conflict, confirmed, sections, override, plan, result' : '*';
+		if ( ! empty( $args['light'] ) ) {
+			$columns = 'id, job_id, object_type, source_id, subtype, title, level, position, included, status, action, target_id, owner, conflict, confirmed, sections, result';
+		}
+		$order = match ( $args['order'] ?? '' ) {
+			'import' => 'position ASC, id ASC',
+			'id' => 'id ASC',
+			default => 'level ASC, id ASC',
+		};
+		$limit = isset( $args['limit'] ) ? $wpdb->prepare( ' LIMIT %d OFFSET %d', (int) $args['limit'], (int) ( $args['offset'] ?? 0 ) ) : '';
 
 		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Custom table; columns and order are constants, the WHERE clause is built from placeholders.
 			$wpdb->prepare( "SELECT {$columns} FROM %i WHERE {$sql} ORDER BY {$order}", array_merge( array( Database::table( 'items' ) ), $params ) ) . $limit, // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Columns and order are constants.
@@ -536,17 +549,25 @@ final class Jobs {
 	/**
 	 * Returns the `type:id` keys of every object in a job.
 	 *
-	 * @param int $job_id Job ID.
+	 * @param int    $job_id Job ID.
+	 * @param string $status Only objects whose item has this status, or '' for all.
 	 *
 	 * @return string[]
 	 */
-	public static function keys( int $job_id ): array {
+	public static function keys( int $job_id, string $status = '' ): array {
 		global $wpdb;
 
-		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
-			$wpdb->prepare( "SELECT object_type, source_id FROM %i WHERE job_id = %d AND object_type IN ('post', 'term', 'menu', 'form')", Database::table( 'items' ), $job_id ),
-			ARRAY_A
-		);
+		if ( '' === $status ) {
+			$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+				$wpdb->prepare( "SELECT object_type, source_id FROM %i WHERE job_id = %d AND object_type IN ('post', 'term', 'menu', 'form')", Database::table( 'items' ), $job_id ),
+				ARRAY_A
+			);
+		} else {
+			$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+				$wpdb->prepare( "SELECT object_type, source_id FROM %i WHERE job_id = %d AND status = %s AND object_type IN ('post', 'term', 'menu', 'form')", Database::table( 'items' ), $job_id, $status ),
+				ARRAY_A
+			);
+		}
 
 		return array_map(
 			static fn( array $row ): string => Util::key( (string) $row['object_type'], (int) $row['source_id'] ),

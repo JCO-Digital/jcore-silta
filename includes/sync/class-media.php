@@ -34,6 +34,11 @@ final class Media {
 	private const TMP = 'jcore-silta-tmp';
 
 	/**
+	 * How many files (or parts of files) one request may carry.
+	 */
+	public const BATCH_FILES = 64;
+
+	/**
 	 * Per-transfer filesystem lock, released automatically when a request dies.
 	 *
 	 * @var resource|null
@@ -112,10 +117,82 @@ final class Media {
 		if ( $offset < 0 || $length < 1 ) {
 			return self::invalid_chunk();
 		}
-		$length = min( $length, self::chunk_size() );
 
 		$described = self::describe( $id, false );
 		$known     = array_column( (array) ( $described['files'] ?? array() ), 'size', 'path' );
+
+		$chunk = self::read_file( $known, $path, $offset, min( $length, self::chunk_size() ) );
+		if ( ! is_wp_error( $chunk ) ) {
+			unset( $chunk['bytes'] );
+		}
+
+		return $chunk;
+	}
+
+	/**
+	 * Reads several of an attachment's files in one go: each from its offset
+	 * to its end, in the order asked, until the length is used up. The last
+	 * file read may be cut short; files after it are left for the next call.
+	 *
+	 * An image has a dozen small files (its sizes). Fetching each with a
+	 * request of its own means a dozen round trips, and loading WordPress on
+	 * the other site for every one of them.
+	 *
+	 * @param int                                          $id     Attachment ID.
+	 * @param array<int, array{path: string, offset: int}> $files  Files and where to start in each.
+	 * @param int                                          $length Bytes to read in total.
+	 *
+	 * @return array{chunks: array<int, array<string, mixed>>}|WP_Error
+	 */
+	public static function read_many( int $id, array $files, int $length ): array|WP_Error {
+		if ( $length < 1 || empty( $files ) || count( $files ) > self::BATCH_FILES ) {
+			return self::invalid_chunk();
+		}
+
+		$left      = min( $length, self::chunk_size() );
+		$described = self::describe( $id, false );
+		$known     = array_column( (array) ( $described['files'] ?? array() ), 'size', 'path' );
+		$chunks    = array();
+
+		foreach ( $files as $file ) {
+			if ( $left < 1 ) {
+				break;
+			}
+			if ( $file['offset'] < 0 ) {
+				return self::invalid_chunk();
+			}
+
+			$chunk = self::read_file( $known, $file['path'], $file['offset'], $left );
+			if ( is_wp_error( $chunk ) ) {
+				return $chunk;
+			}
+
+			$left -= $chunk['bytes'];
+			unset( $chunk['bytes'] );
+			$chunks[] = array(
+				'path'   => $file['path'],
+				'offset' => $file['offset'],
+			) + $chunk;
+
+			if ( ! $chunk['eof'] ) {
+				break;
+			}
+		}
+
+		return array( 'chunks' => $chunks );
+	}
+
+	/**
+	 * Reads part of a file that belongs to an attachment.
+	 *
+	 * @param array<string, int> $known  The attachment's files: path => size.
+	 * @param string             $path   File path relative to uploads.
+	 * @param int                $offset Byte offset.
+	 * @param int                $length Bytes to read at most.
+	 *
+	 * @return array{data: string, size: int, eof: bool, bytes: int}|WP_Error
+	 */
+	private static function read_file( array $known, string $path, int $offset, int $length ): array|WP_Error {
 		if ( ! isset( $known[ $path ] ) ) {
 			return new WP_Error( 'jcore_silta_no_file', __( 'The file does not belong to this attachment.', 'jcore-silta' ), array( 'status' => 404 ) );
 		}
@@ -130,13 +207,14 @@ final class Media {
 		}
 
 		fseek( $handle, $offset );
-		$data = (string) fread( $handle, $length ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Chunked reads.
+		$data = (string) fread( $handle, max( 1, $length ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Chunked reads.
 		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Chunked reads.
 
 		return array(
-			'data' => base64_encode( $data ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary over JSON.
-			'size' => (int) $known[ $path ],
-			'eof'  => $offset + strlen( $data ) >= (int) $known[ $path ],
+			'data'  => base64_encode( $data ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary over JSON.
+			'size'  => (int) $known[ $path ],
+			'eof'   => $offset + strlen( $data ) >= (int) $known[ $path ],
+			'bytes' => strlen( $data ),
 		);
 	}
 
