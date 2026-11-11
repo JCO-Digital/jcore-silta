@@ -93,8 +93,8 @@ final class Matcher {
 
 		$guid = (string) ( $record['guid'] ?? '' );
 		if ( '' !== $guid ) {
-			$guids = array_unique( array( $guid, str_replace( $this->source_home, Site::home(), $guid ) ) );
-			$found = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lookup by GUID.
+			$guids  = array_unique( array( $guid, str_replace( $this->source_home, Site::home(), $guid ) ) );
+			$found  = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lookup by GUID.
 				$wpdb->prepare(
 					"SELECT ID FROM %i WHERE guid IN (%s, %s) AND post_type = %s AND post_status NOT IN ('trash', 'auto-draft')",
 					$wpdb->posts,
@@ -103,9 +103,10 @@ final class Matcher {
 					$post_type
 				)
 			);
-			if ( 1 === count( $found ) && $this->free( 'post', (int) $found[0], $id ) ) {
+			$picked = $this->pick( (array) $found, $record );
+			if ( null !== $picked ) {
 				return array(
-					'id'     => (int) $found[0],
+					'id'     => $picked,
 					'method' => 'guid',
 				);
 			}
@@ -114,7 +115,7 @@ final class Matcher {
 		if ( 'attachment' === $post_type ) {
 			$path = (string) ( $record['file']['path'] ?? $record['path'] ?? '' );
 			if ( '' !== $path ) {
-				$found = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lookup by file.
+				$found  = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lookup by file.
 					$wpdb->prepare(
 						"SELECT p.ID FROM %i p INNER JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_wp_attached_file' WHERE m.meta_value = %s AND p.post_type = 'attachment'",
 						$wpdb->posts,
@@ -122,9 +123,10 @@ final class Matcher {
 						$path
 					)
 				);
-				if ( 1 === count( $found ) && $this->free( 'post', (int) $found[0], $id ) ) {
+				$picked = $this->pick( (array) $found, $record );
+				if ( null !== $picked ) {
 					return array(
-						'id'     => (int) $found[0],
+						'id'     => $picked,
 						'method' => 'path',
 					);
 				}
@@ -164,6 +166,18 @@ final class Matcher {
 				}
 			)
 		);
+
+		if ( count( $candidates ) > 1 ) {
+			// Translations can share a slug (Polylang Pro): the copy with the
+			// source's ID or language is the one.
+			$picked = $this->pick( array_column( $candidates, 'ID' ), $record );
+			if ( null !== $picked ) {
+				return array(
+					'id'     => $picked,
+					'method' => 'slug',
+				);
+			}
+		}
 
 		if ( count( $candidates ) > 1 ) {
 			// Several pages share the slug under different parents: use the parent.
@@ -218,6 +232,17 @@ final class Matcher {
 
 		if ( ! taxonomy_exists( $taxonomy ) ) {
 			return null;
+		}
+
+		// On a database clone the term with the source's ID and slug is the
+		// same term. Looking it up by slug alone can find its translation
+		// instead, when translations share a slug (Polylang Pro).
+		$same = get_term( $id );
+		if ( $same instanceof \WP_Term && $same->taxonomy === $taxonomy && $same->slug === (string) $record['slug'] && $this->free( 'term', $id, $id ) ) {
+			return array(
+				'id'     => $id,
+				'method' => 'slug',
+			);
 		}
 
 		$term = get_term_by( 'slug', (string) $record['slug'], $taxonomy );
@@ -340,6 +365,52 @@ final class Matcher {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Picks the local post an incoming one matches among posts that share its
+	 * GUID, file or slug.
+	 *
+	 * Usually there is one. Polylang's media translations are copies of an
+	 * attachment with the same GUID and file, one per language, and
+	 * translations may share a slug: then the copy with the source's ID is
+	 * the same post (the sites are database clones), and failing that the
+	 * only copy in the same language. Without that, every image that has
+	 * translations would look new to the target and be transferred again.
+	 *
+	 * @param array<int, int|string> $candidates Local post IDs.
+	 * @param array<string, mixed>   $record     Incoming post or stub.
+	 *
+	 * @return int|null
+	 */
+	private function pick( array $candidates, array $record ): ?int {
+		$id         = (int) $record['id'];
+		$candidates = array_values(
+			array_filter(
+				array_map( 'intval', $candidates ),
+				fn( int $candidate ): bool => $this->free( 'post', $candidate, $id )
+			)
+		);
+
+		if ( count( $candidates ) < 2 ) {
+			return $candidates[0] ?? null;
+		}
+		if ( in_array( $id, $candidates, true ) ) {
+			return $id;
+		}
+
+		$lang = (string) ( $record['language']['lang'] ?? $record['lang'] ?? '' );
+		if ( '' === $lang ) {
+			return null;
+		}
+		$same = array_values(
+			array_filter(
+				$candidates,
+				static fn( int $candidate ): bool => ( Polylang::post( $candidate )['lang'] ?? '' ) === $lang
+			)
+		);
+
+		return 1 === count( $same ) ? $same[0] : null;
 	}
 
 	/**

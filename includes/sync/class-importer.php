@@ -231,14 +231,33 @@ final class Importer {
 			$warnings = array_merge( $warnings, Meta_Writer::replace( 'post', $id, $keys, $theirs[ $group ] ?? array(), false, $restore ) );
 		}
 
+		// The language before the terms: Polylang turns the terms a post is
+		// given into their translations in the post's language, and a post
+		// that was just created still has the site's default language. Its
+		// Swedish categories would be swapped for the Finnish ones.
+		if ( ! empty( $incoming['language']['lang'] ) && $wants( 'language' ) ) {
+			Polylang::set_post( $id, $incoming['language'], $restore );
+
+			// Translations may share a slug (Polylang Pro). WordPress saw the
+			// slug before the post had its language and numbered it ("name-2")
+			// when a translation already had it; now that the language is set,
+			// the slug can be what the source has.
+			$slug = (string) ( $fields['post_name'] ?? '' );
+			if ( ! $attachment && '' !== $slug && ( null === $local || $wants( 'fields.post_name' ) ) && get_post_field( 'post_name', $id, 'raw' ) !== $slug ) {
+				self::save(
+					'wp_update_post',
+					array(
+						'ID'        => $id,
+						'post_name' => $slug,
+					)
+				);
+			}
+		}
+
 		foreach ( (array) ( $incoming['terms'] ?? array() ) as $taxonomy => $ids ) {
 			if ( Content::syncable_taxonomy( (string) $taxonomy ) && is_object_in_taxonomy( $incoming['post_type'], (string) $taxonomy ) && $wants( 'terms.' . $taxonomy ) ) {
 				wp_set_object_terms( $id, array_map( 'intval', (array) $ids ), (string) $taxonomy );
 			}
-		}
-
-		if ( ! empty( $incoming['language']['lang'] ) && $wants( 'language' ) ) {
-			Polylang::set_post( $id, $incoming['language'] );
 		}
 
 		clean_post_cache( $id );
