@@ -46,7 +46,7 @@ To also push from production to staging, or pull in the other direction, pair th
 * All custom fields, except WordPress's internal bookkeeping and keys you exclude in the settings. ACF, Yoast SEO, Rank Math and SEOPress fields that point at other posts, images or terms are rewritten to the matching content on the other site.
 * Terms in every taxonomy. Missing terms are created; existing terms are never changed.
 * Media files with their sizes, alt text, captions and descriptions. The same image is never imported twice.
-* Polylang languages and translation links.
+* Polylang languages and translation links, also with Polylang for WooCommerce: each language version of a product is synced as it is on the source. Media translations share one file on the other site too, as Polylang makes them.
 * Menus with their items and locations, and reusable blocks.
 * Global content from JCORE Maailma. Global content posts sync like any other post type and keep their slugs, which templates use to find them. A page that shows global content with the JCORE Global Content block brings the global content along, and the block keeps pointing at it on the other site.
 * Gravity Forms forms, when Gravity Forms is active on both sites: fields, settings, confirmations, notifications and whether the form is active. Posts that embed a form with the Gravity Forms block, the `[gravityform]` shortcode or an ACF form field get the matching form's ID on the other site, and the forms they embed are offered along with them. A confirmation that redirects to a page points at the matching page.
@@ -61,6 +61,7 @@ Comments, users, widgets, site settings and ACF options pages are not synced. Ne
 * The target site checks that it has the post types, taxonomies, ACF fields, languages and Gravity Forms field types the content needs, and refuses the parts it can't take.
 * Undoing a sync that created a form moves the form to the Gravity Forms trash instead of deleting it, so entries submitted in the meantime are kept.
 * Existing media files are never overwritten.
+* Large syncs are written a few items per request, so they finish within the server's time limits, and only one browser tab or command works on a sync at a time. A sync that was interrupted can be continued from **History** without creating anything twice.
 * When a site's database is copied to another address (a staging refresh, a local copy), Silta notices, gives the copy its own identity and switches off the connections that came with it.
 
 = External services =
