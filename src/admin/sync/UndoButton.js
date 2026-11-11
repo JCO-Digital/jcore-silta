@@ -1,8 +1,8 @@
 import { Button } from '@wordpress/components';
 import { useState } from '@wordpress/element';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
 
-import { errorMessage, post } from '../api';
+import { errorMessage, postWhenFree } from '../api';
 import ConfirmModal from '../components/ConfirmModal';
 import { site } from '../config';
 import { formatDate, parseGmt } from '../words';
@@ -17,7 +17,9 @@ function hasWritten( job ) {
 	if ( job.role === 'target' ) {
 		return job.status !== 'undone';
 	}
-	return [ 'done', 'running', 'cancelled', 'failed' ].includes( job.status );
+	return [ 'done', 'running', 'cancelled', 'failed', 'undoing' ].includes(
+		job.status
+	);
 }
 
 /**
@@ -76,6 +78,7 @@ export function UndoWindow( { job } ) {
 export default function UndoButton( { job, size, onUndone } ) {
 	const [ isAsking, setIsAsking ] = useState( false );
 	const [ isBusy, setIsBusy ] = useState( false );
+	const [ remaining, setRemaining ] = useState( 0 );
 	const [ error, setError ] = useState( '' );
 
 	if ( ! canUndo( job ) ) {
@@ -92,13 +95,20 @@ export default function UndoButton( { job, size, onUndone } ) {
 		setIsBusy( true );
 		setError( '' );
 		try {
-			const result = await post( `/jobs/${ job.id }/undo` );
+			// A large sync is undone a slice per request, so no request runs
+			// into the server's time limit.
+			let result;
+			do {
+				result = await postWhenFree( `/jobs/${ job.id }/undo` );
+				setRemaining( result.remaining || 0 );
+			} while ( result.remaining > 0 );
 			setIsAsking( false );
 			onUndone( result );
 		} catch ( e ) {
 			setError( errorMessage( e ) );
 		} finally {
 			setIsBusy( false );
+			setRemaining( 0 );
 		}
 	};
 
@@ -133,6 +143,20 @@ export default function UndoButton( { job, size, onUndone } ) {
 							target
 						) }
 					</p>
+					{ remaining > 0 && (
+						<p role="status">
+							{ sprintf(
+								/* translators: %d: number of changes. */
+								_n(
+									'Undoing… %d change left.',
+									'Undoing… %d changes left.',
+									remaining,
+									'jcore-silta'
+								),
+								remaining
+							) }
+						</p>
+					) }
 				</ConfirmModal>
 			) }
 		</>

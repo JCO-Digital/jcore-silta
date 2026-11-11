@@ -119,6 +119,8 @@ function heading( job, targetLabel ) {
 			);
 		case 'undone':
 			return __( 'This sync was undone', 'jcore-silta' );
+		case 'undoing':
+			return __( 'This sync is partly undone', 'jcore-silta' );
 		case 'cancelled':
 			return __( 'This sync was stopped', 'jcore-silta' );
 		default:

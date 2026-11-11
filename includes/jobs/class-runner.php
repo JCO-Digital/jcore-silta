@@ -79,6 +79,35 @@ final class Runner {
 	private Endpoint $target;
 
 	/**
+	 * This request's claim on the job, while it holds one.
+	 *
+	 * @var string|null
+	 */
+	private ?string $claim = null;
+
+	/**
+	 * When the current request should stop starting new work (microtime).
+	 *
+	 * @var float
+	 */
+	private float $deadline = 0.0;
+
+	/**
+	 * Keys of the job's objects, flipped; read once per request and dropped
+	 * whenever items are added.
+	 *
+	 * @var array<string, int>|null
+	 */
+	private ?array $keys = null;
+
+	/**
+	 * Targets chosen by hand for the job's objects, by key; read once per request.
+	 *
+	 * @var array<string, int|string>|null
+	 */
+	private ?array $overrides = null;
+
+	/**
 	 * Creates a runner.
 	 *
 	 * @param array<string, mixed> $job        Job.
@@ -222,9 +251,34 @@ final class Runner {
 		if ( ! in_array( $this->job['status'], array( 'preparing', 'ready' ), true ) ) {
 			return $this->progress();
 		}
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		// Another request may have moved the job on before this one got it.
+		if ( ! in_array( $this->job['status'], array( 'preparing', 'ready' ), true ) ) {
+			$this->release();
 
-		$deadline = microtime( true ) + $budget;
-		$state    = $this->job['state'];
+			return $this->progress();
+		}
+
+		try {
+			return $this->prepare_steps( $budget );
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Runs preparation steps until the budget is spent or the job is ready.
+	 *
+	 * @param float $budget Seconds.
+	 *
+	 * @return array<string, mixed>|WP_Error Progress.
+	 */
+	private function prepare_steps( float $budget ): array|WP_Error {
+		$deadline       = microtime( true ) + $budget;
+		$this->deadline = $deadline;
+		$state          = $this->job['state'];
 
 		while ( microtime( true ) < $deadline ) {
 			$phase = (string) ( $state['phase'] ?? 'resolve' );
@@ -269,6 +323,22 @@ final class Runner {
 	 * @return array<string, mixed>|WP_Error Progress.
 	 */
 	public function expand(): array|WP_Error {
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		try {
+			return $this->add_level();
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Adds the next dependency level to a claimed job.
+	 *
+	 * @return array<string, mixed> Progress.
+	 */
+	private function add_level(): array {
 		$state   = $this->job['state'];
 		$level   = (int) ( $state['level'] ?? 0 );
 		$missing = $this->missing( $level );
@@ -358,6 +428,31 @@ final class Runner {
 		if ( ! in_array( $this->job['status'], array( 'ready', 'running' ), true ) ) {
 			return new WP_Error( 'jcore_silta_not_ready', __( 'The sync is not ready to run.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
+		}
+		// Another request may have finished or stopped the job before this one got it.
+		if ( ! in_array( $this->job['status'], array( 'ready', 'running' ), true ) ) {
+			$this->release();
+
+			return $this->progress();
+		}
+
+		try {
+			return $this->run_steps( $budget );
+		} finally {
+			$this->release();
+		}
+	}
+
+	/**
+	 * Runs steps of a claimed job until the budget is spent or it is done.
+	 *
+	 * @param float $budget Seconds.
+	 *
+	 * @return array<string, mixed>|WP_Error Progress.
+	 */
+	private function run_steps( float $budget ): array|WP_Error {
 
 		// Capabilities can change between planning and running.
 		if ( ! Capabilities::unrestricted() ) {
@@ -374,8 +469,9 @@ final class Runner {
 			);
 		}
 
-		$deadline = microtime( true ) + $budget;
-		$state    = $this->job['state'];
+		$deadline       = microtime( true ) + $budget;
+		$this->deadline = $deadline;
+		$state          = $this->job['state'];
 		if ( isset( $state['media']['item'] ) && is_wp_error( $this->item_permission( (int) $state['media']['item'] ) ) ) {
 			unset( $state['media'] );
 		}
@@ -387,12 +483,18 @@ final class Runner {
 		);
 
 		while ( microtime( true ) < $deadline ) {
+			// Stopped from another request (the Stop button) while this one worked.
+			if ( 'cancelled' === Jobs::status( (int) $this->job['id'] ) ) {
+				$this->job['status'] = 'cancelled';
+				break;
+			}
+
 			$phase = (string) ( $state['run'] ?? 'media' );
 
 			$result = match ( $phase ) {
 				'media' => $this->media_step( $state, $deadline ),
 				'import' => $this->media_import_batch( $state, $deadline ),
-				'fixup' => $this->fixup_batch(),
+				'fixup' => $this->fixup_batch( $state ),
 				'trash' => $this->trash(),
 				default => 'done',
 			};
@@ -433,12 +535,16 @@ final class Runner {
 	}
 
 	/**
-	 * Undoes the job on the target.
+	 * Undoes the job on the target, for as long as the budget allows. The
+	 * result's `remaining` says how many changes are still to be undone: call
+	 * again until it is zero.
+	 *
+	 * @param float|null $budget Seconds, or null to undo everything in one go.
 	 *
 	 * @return array<string, mixed>|WP_Error
 	 */
-	public function undo(): array|WP_Error {
-		if ( ! in_array( $this->job['status'], array( 'done', 'running', 'failed', 'cancelled' ), true ) ) {
+	public function undo( ?float $budget = null ): array|WP_Error {
+		if ( ! in_array( $this->job['status'], array( 'done', 'running', 'failed', 'cancelled', 'undoing' ), true ) ) {
 			return new WP_Error( 'jcore_silta_not_undoable', __( 'Only syncs that have written something can be undone.', 'jcore-silta' ), array( 'status' => 409 ) );
 		}
 
@@ -449,14 +555,27 @@ final class Runner {
 			}
 		}
 
-		$result = $this->target->undo( array( 'job' => $this->job['uuid'] ) );
-		if ( is_wp_error( $result ) ) {
-			return $result;
+		if ( ! $this->claim() ) {
+			return Jobs::busy();
 		}
+		try {
+			$args = array( 'job' => $this->job['uuid'] );
+			if ( null !== $budget ) {
+				$args['budget'] = $budget;
+			}
+			$result = $this->target->undo( $args );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
 
-		$this->save( array( 'status' => 'undone' ) );
+			// A target that undoes in one go (an older version) reports nothing left.
+			$result['remaining'] = max( 0, (int) ( $result['remaining'] ?? 0 ) );
+			$this->save( array( 'status' => $result['remaining'] > 0 ? 'undoing' : 'undone' ) );
 
-		return $result;
+			return $result;
+		} finally {
+			$this->release();
+		}
 	}
 
 	/**
@@ -585,7 +704,7 @@ final class Runner {
 	 * @return array{undo_until: string, undo_expired: bool} GMT datetime or '', and whether the snapshots are gone.
 	 */
 	private static function undo_window( array $job ): array {
-		$written = in_array( $job['status'], array( 'done', 'cancelled', 'failed', 'received' ), true );
+		$written = in_array( $job['status'], array( 'done', 'cancelled', 'failed', 'received', 'undoing' ), true );
 
 		if ( 'initiator' === $job['role'] && 'push' === $job['direction'] ) {
 			$days  = (int) ( $job['state']['undo_days'] ?? 0 );
@@ -1266,6 +1385,8 @@ final class Runner {
 			$options['confirmed'] = array_fill_keys( array_column( $items, 'key' ), true );
 			$options['fixup']     = true;
 		}
+		// What is left of this request's time, and enough for one object at least.
+		$options['budget'] = max( 5.0, round( $this->deadline - microtime( true ), 1 ) );
 
 		$response = $this->target->import(
 			array(
@@ -1282,6 +1403,11 @@ final class Runner {
 				'status' => 'failed',
 				'error'  => __( 'The target did not report on this item.', 'jcore-silta' ),
 			) );
+
+			// The target ran out of time before this one: it stays queued.
+			if ( 'deferred' === ( $result['status'] ?? '' ) ) {
+				continue;
+			}
 
 			if ( $fixup ) {
 				$result['fixed']  = true;
@@ -1861,24 +1987,27 @@ final class Runner {
 	 * @return array<string, mixed>
 	 */
 	private function plan_options( array $items ): array {
-		$overrides = array();
-		foreach ( $items as $item ) {
-			$override = $item['override']['target'] ?? null;
-			if ( null !== $override ) {
-				$overrides[ $item['key'] ] = $override;
-			}
-		}
-
 		// Only the job's objects these items refer to: the target needs them to
 		// tell "created later in this job" from "missing", and a whole-post-type
 		// job can hold thousands of keys.
-		$in_job = array_flip( Jobs::keys( (int) $this->job['id'] ) );
+		$in_job = $this->keys();
 		$refs   = array();
 		foreach ( $items as $item ) {
 			foreach ( (array) ( $item['payload']['object']['refs'] ?? array() ) as $ref ) {
 				if ( isset( $in_job[ $ref ] ) ) {
 					$refs[ $ref ] = true;
 				}
+			}
+		}
+
+		// A target chosen by hand also holds for references to that object
+		// from other batches, which only have its stub.
+		$this->overrides ??= Jobs::overrides( (int) $this->job['id'] );
+		$overrides         = array_intersect_key( $this->overrides, $refs );
+		foreach ( $items as $item ) {
+			$override = $item['override']['target'] ?? null;
+			if ( null !== $override ) {
+				$overrides[ $item['key'] ] = $override;
 			}
 		}
 
@@ -1977,5 +2106,55 @@ final class Runner {
 	private function save( array $changes ): void {
 		Jobs::update( (int) $this->job['id'], $changes );
 		$this->job = array_merge( $this->job, $changes );
+		if ( null !== $this->claim ) {
+			Jobs::renew( (int) $this->job['id'], $this->claim );
+		}
+	}
+
+	/**
+	 * Returns the keys of every object in the job, as array keys.
+	 *
+	 * @return array<string, int>
+	 */
+	private function keys(): array {
+		$this->keys ??= array_flip( Jobs::keys( (int) $this->job['id'] ) );
+
+		return $this->keys;
+	}
+
+	/**
+	 * Takes the job for this request and reads it again: another request may
+	 * have changed it since it was loaded.
+	 *
+	 * @return bool Whether this request holds the job.
+	 */
+	private function claim(): bool {
+		if ( null !== $this->claim ) {
+			return true;
+		}
+
+		$token = wp_generate_uuid4();
+		if ( ! Jobs::claim( (int) $this->job['id'], $token ) ) {
+			return false;
+		}
+		$this->claim = $token;
+		$this->job   = (array) Jobs::get( (int) $this->job['id'] );
+
+		// A request that dies (a fatal error, the time limit) still lets go.
+		register_shutdown_function( array( $this, 'release' ) );
+
+		return true;
+	}
+
+	/**
+	 * Lets go of the job.
+	 *
+	 * @return void
+	 */
+	public function release(): void {
+		if ( null !== $this->claim ) {
+			Jobs::release( (int) $this->job['id'], $this->claim );
+			$this->claim = null;
+		}
 	}
 }

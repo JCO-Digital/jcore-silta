@@ -331,16 +331,31 @@ final class Sync_Command {
 
 		WP_CLI::confirm( sprintf( 'Undo sync #%d (%s)?', $job['id'], $job['remote_label'] ), $assoc_args );
 
-		if ( 'target' === $job['role'] ) {
-			$result = ( new Local( (string) $job['remote_site'] ) )->undo( array( 'job' => $job['uuid'] ) );
-		} else {
-			$runner = Runner::load( (int) $job['id'] );
-			$result = is_wp_error( $runner ) ? $runner : $runner->undo();
-		}
+		// In slices, like the admin screen: a remote target has a time limit.
+		do {
+			if ( 'target' === $job['role'] ) {
+				$result = ( new Local( (string) $job['remote_site'] ) )->undo(
+					array(
+						'job'    => $job['uuid'],
+						'budget' => self::STEP,
+					)
+				);
+			} else {
+				$runner = Runner::load( (int) $job['id'] );
+				$result = is_wp_error( $runner ) ? $runner : $runner->undo( self::STEP );
+			}
 
-		if ( is_wp_error( $result ) ) {
-			WP_CLI::error( $result->get_error_message() );
-		}
+			if ( self::wait_if_busy( $result ) ) {
+				$result = array( 'remaining' => 1 );
+				continue;
+			}
+			if ( is_wp_error( $result ) ) {
+				WP_CLI::error( $result->get_error_message() );
+			}
+			if ( ! empty( $result['remaining'] ) ) {
+				WP_CLI::log( sprintf( 'Undoing: %d changes left', (int) $result['remaining'] ) );
+			}
+		} while ( ! empty( $result['remaining'] ) );
 
 		WP_CLI::success( sprintf( 'Restored %d, removed %d, untrashed %d.', $result['restored'] ?? 0, $result['removed'] ?? 0, $result['untrashed'] ?? 0 ) );
 		foreach ( (array) ( $result['errors'] ?? array() ) as $error ) {
@@ -430,6 +445,10 @@ final class Sync_Command {
 			}
 
 			$progress = $runner->prepare( self::STEP );
+			if ( self::wait_if_busy( $progress ) ) {
+				$progress = array( 'job' => array( 'status' => 'preparing' ) );
+				continue;
+			}
 			if ( is_wp_error( $progress ) ) {
 				WP_CLI::error( $progress->get_error_message() );
 			}
@@ -461,6 +480,10 @@ final class Sync_Command {
 		do {
 			$runner   = Runner::load( $job_id );
 			$progress = is_wp_error( $runner ) ? $runner : $runner->run( self::STEP );
+			if ( self::wait_if_busy( $progress ) ) {
+				$progress = array( 'job' => array( 'status' => 'running' ) );
+				continue;
+			}
 			if ( is_wp_error( $progress ) ) {
 				WP_CLI::error( $progress->get_error_message() . sprintf( ' Continue with `wp silta resume %d`.', $job_id ) );
 			}
@@ -484,6 +507,25 @@ final class Sync_Command {
 			$summary[] = $count . ' ' . $bucket;
 		}
 		WP_CLI::success( sprintf( 'Sync #%d done: %s. Undo with `wp silta undo %d`.', $job_id, implode( ', ', $summary ), $job_id ) );
+	}
+
+	/**
+	 * Waits a moment when another request (the admin screen, another shell)
+	 * is working on the same sync, instead of giving up.
+	 *
+	 * @param mixed $result What a step returned.
+	 *
+	 * @return bool Whether the sync was busy and the step should be tried again.
+	 */
+	private static function wait_if_busy( mixed $result ): bool {
+		if ( ! is_wp_error( $result ) || 'jcore_silta_busy' !== $result->get_error_code() ) {
+			return false;
+		}
+
+		WP_CLI::log( 'Another request is working on this sync. Waiting for it…' );
+		sleep( 5 );
+
+		return true;
 	}
 
 	/**

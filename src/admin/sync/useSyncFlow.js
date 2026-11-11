@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from '@wordpress/element';
 
-import { errorMessage, get, post, remove } from '../api';
+import { errorMessage, get, post, postWhenFree, remove } from '../api';
 import { cleanRules } from '../components/RulesEditor';
 import { preselect, site } from '../config';
 import { setQueryArgs } from '../url';
@@ -76,7 +76,13 @@ export default function useSyncFlow() {
 		setStep( action === 'run' ? 'running' : 'preparing' );
 		try {
 			for (;;) {
-				const next = await post( `/jobs/${ id }/${ action }` );
+				// When another request still holds the sync (the one before a
+				// retry, or another tab), wait for it instead of failing.
+				const next = await postWhenFree(
+					`/jobs/${ id }/${ action }`,
+					{},
+					() => token.current === mine
+				);
 				if ( token.current !== mine ) {
 					return;
 				}
@@ -274,7 +280,7 @@ export default function useSyncFlow() {
 		setIsBusy( true );
 		setError( '' );
 		try {
-			setProgress( await post( `/jobs/${ job.id }/expand` ) );
+			setProgress( await postWhenFree( `/jobs/${ job.id }/expand` ) );
 			loop( job.id, 'prepare' );
 		} catch ( e ) {
 			setError( errorMessage( e ) );

@@ -1998,3 +1998,35 @@ msgstr "Tarkista ja lähetä"
 #: build/editor.js:6
 msgid "Save your changes first. Only saved content is pushed."
 msgstr "Tallenna muutokset ensin. Vain tallennettu sisältö lähetetään."
+
+#: includes/jobs/class-jobs.php
+msgid "Another request is still working on this sync. It carries on as soon as that one is done."
+msgstr "Toinen pyyntö käsittelee vielä tätä synkronointia. Se jatkuu heti, kun tuo on valmis."
+
+#. translators: %s: name of the invalid part of the record, e.g. refs.
+#: includes/sync/class-context.php
+msgid "Malformed bundle record: invalid “%s”."
+msgstr "Virheellinen tietue: osa ”%s” ei kelpaa."
+
+#: includes/jobs/class-runner.php
+msgid "The source sent no file data."
+msgstr "Lähde ei lähettänyt tiedoston sisältöä."
+
+#: includes/jobs/class-runner.php
+msgid "The file transfer is not getting anywhere. Run the sync again."
+msgstr "Tiedostonsiirto ei etene. Suorita synkronointi uudelleen."
+
+#: build/admin.js
+msgid "Partly undone"
+msgstr "Osittain kumottu"
+
+#: build/admin.js
+msgid "This sync is partly undone"
+msgstr "Tämä synkronointi on kumottu osittain"
+
+#. translators: %d: number of changes.
+#: build/admin.js
+msgid "Undoing… %d change left."
+msgid_plural "Undoing… %d changes left."
+msgstr[0] "Kumotaan… %d muutos jäljellä."
+msgstr[1] "Kumotaan… %d muutosta jäljellä."

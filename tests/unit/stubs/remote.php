@@ -163,6 +163,16 @@ if ( ! function_exists( 'wp_is_uuid' ) ) {
 		return 1 === preg_match( '/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $uuid );
 	}
 }
+if ( ! function_exists( 'wp_generate_uuid4' ) ) {
+	/**
+	 * Stand-in for wp_generate_uuid4().
+	 *
+	 * @return string
+	 */
+	function wp_generate_uuid4(): string {
+		return sprintf( '%08x-%04x-4%03x-a%03x-%012x', random_int( 0, 0xffffffff ), random_int( 0, 0xffff ), random_int( 0, 0xfff ), random_int( 0, 0xfff ), random_int( 0, 0xffffffffffff ) );
+	}
+}
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	/**
 	 * Stand-in for sanitize_text_field().

@@ -48,6 +48,18 @@ final class RemoteDatabaseStub {
 	 * @var array
 	 */
 	private array $nonces = array();
+	/**
+	 * Last database error.
+	 *
+	 * @var string
+	 */
+	public string $last_error = '';
+	/**
+	 * Token holding the job row, '' when it is free.
+	 *
+	 * @var string
+	 */
+	public string $lock = '';
 
 	/**
 	 * Provides prepare for the test fixture.
@@ -84,12 +96,43 @@ final class RemoteDatabaseStub {
 		if ( $this->fail ) {
 			return false;
 		}
+		// Claiming and releasing the job row.
+		if ( str_contains( $query[0], 'SET lock_token = %s' ) ) {
+			if ( '' !== $this->lock && $this->lock !== $query[1][1] ) {
+				return 0;
+			}
+			$this->lock = $query[1][1];
+
+			return 1;
+		}
+		if ( str_contains( $query[0], "SET lock_token = ''" ) ) {
+			if ( $this->lock === $query[1][2] ) {
+				$this->lock = '';
+			}
+
+			return 1;
+		}
 		$nonce = $query[1][1];
 		if ( isset( $this->nonces[ $nonce ] ) ) {
 			return 0;
 		}
 		$this->nonces[ $nonce ] = true;
 		return 1;
+	}
+
+	/**
+	 * Answers single-value reads: who holds the job row, and counts (none).
+	 *
+	 * @param array $query Prepared query.
+	 *
+	 * @return ?string
+	 */
+	public function get_var( array $query ): ?string {
+		if ( str_contains( $query[0], 'SELECT lock_token' ) ) {
+			return $this->lock;
+		}
+
+		return str_contains( $query[0], 'COUNT(*)' ) ? '0' : null;
 	}
 
 	/**

@@ -1998,3 +1998,35 @@ msgstr "Granska och skicka"
 #: build/editor.js:6
 msgid "Save your changes first. Only saved content is pushed."
 msgstr "Spara dina ändringar först. Endast sparat innehåll skickas."
+
+#: includes/jobs/class-jobs.php
+msgid "Another request is still working on this sync. It carries on as soon as that one is done."
+msgstr "En annan begäran arbetar fortfarande med den här synkroniseringen. Den fortsätter så snart den är klar."
+
+#. translators: %s: name of the invalid part of the record, e.g. refs.
+#: includes/sync/class-context.php
+msgid "Malformed bundle record: invalid “%s”."
+msgstr "Felaktig post i överföringen: delen ”%s” är ogiltig."
+
+#: includes/jobs/class-runner.php
+msgid "The source sent no file data."
+msgstr "Källan skickade inget filinnehåll."
+
+#: includes/jobs/class-runner.php
+msgid "The file transfer is not getting anywhere. Run the sync again."
+msgstr "Filöverföringen kommer ingen vart. Kör synkroniseringen igen."
+
+#: build/admin.js
+msgid "Partly undone"
+msgstr "Delvis ångrad"
+
+#: build/admin.js
+msgid "This sync is partly undone"
+msgstr "Den här synkroniseringen är delvis ångrad"
+
+#. translators: %d: number of changes.
+#: build/admin.js
+msgid "Undoing… %d change left."
+msgid_plural "Undoing… %d changes left."
+msgstr[0] "Ångrar… %d ändring kvar."
+msgstr[1] "Ångrar… %d ändringar kvar."

@@ -31,6 +31,14 @@ final class Jobs {
 	private const ITEM_JSON = array( 'sections', 'override', 'plan', 'payload', 'result' );
 
 	/**
+	 * Seconds a request keeps a job to itself after its last sign of life.
+	 * Longer than the slowest single step (a remote call that runs into its
+	 * timeout), so a working request is never overtaken; a request that died
+	 * without letting go blocks the job for this long at most.
+	 */
+	public const LEASE = 240;
+
+	/**
 	 * Creates a job.
 	 *
 	 * @param array<string, mixed> $data Columns; options and state may be arrays.
@@ -99,6 +107,98 @@ final class Jobs {
 		$changes['updated_at'] = Util::now();
 
 		$wpdb->update( Database::table( 'jobs' ), $changes, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+	}
+
+	/**
+	 * Takes a job for one request, so two requests never work on it at once:
+	 * a retry sent while the first request is still running, or a second tab,
+	 * would import the same objects twice. The claim is one UPDATE, so only
+	 * one of several concurrent requests gets it.
+	 *
+	 * @param int    $id    Job ID.
+	 * @param string $token The claiming request's token.
+	 *
+	 * @return bool Whether this request now holds the job.
+	 */
+	public static function claim( int $id, string $token ): bool {
+		global $wpdb;
+
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic claim on the custom table.
+			$wpdb->prepare(
+				'UPDATE %i SET lock_token = %s, locked_until = %d WHERE id = %d AND ( locked_until < %d OR lock_token = %s )',
+				Database::table( 'jobs' ),
+				$token,
+				time() + self::LEASE,
+				$id,
+				time(),
+				$token
+			)
+		);
+
+		// Not the affected rows: they are zero when the same values are written again.
+		$holder = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Must be current.
+			$wpdb->prepare( 'SELECT lock_token FROM %i WHERE id = %d', Database::table( 'jobs' ), $id )
+		);
+
+		// No answer means the table hasn't been upgraded yet (the columns are
+		// new in 1.4): carry on unguarded rather than block every sync.
+		return $token === $holder || ( null === $holder && '' !== $wpdb->last_error );
+	}
+
+	/**
+	 * Keeps a claimed job for another lease. Called after every step.
+	 *
+	 * @param int    $id    Job ID.
+	 * @param string $token The holding request's token.
+	 *
+	 * @return void
+	 */
+	public static function renew( int $id, string $token ): void {
+		global $wpdb;
+
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare( 'UPDATE %i SET locked_until = %d WHERE id = %d AND lock_token = %s', Database::table( 'jobs' ), time() + self::LEASE, $id, $token )
+		);
+	}
+
+	/**
+	 * Lets go of a claimed job.
+	 *
+	 * @param int    $id    Job ID.
+	 * @param string $token The holding request's token.
+	 *
+	 * @return void
+	 */
+	public static function release( int $id, string $token ): void {
+		global $wpdb;
+
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare( "UPDATE %i SET lock_token = '', locked_until = 0 WHERE id = %d AND lock_token = %s", Database::table( 'jobs' ), $id, $token )
+		);
+	}
+
+	/**
+	 * The error a request gets when another one holds the job.
+	 *
+	 * @return WP_Error
+	 */
+	public static function busy(): WP_Error {
+		return new WP_Error( 'jcore_silta_busy', __( 'Another request is still working on this sync. It carries on as soon as that one is done.', 'jcore-silta' ), array( 'status' => 409 ) );
+	}
+
+	/**
+	 * Returns a job's current status, straight from the database.
+	 *
+	 * @param int $id Job ID.
+	 *
+	 * @return string
+	 */
+	public static function status( int $id ): string {
+		global $wpdb;
+
+		return (string) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Must be current.
+			$wpdb->prepare( 'SELECT status FROM %i WHERE id = %d', Database::table( 'jobs' ), $id )
+		);
 	}
 
 	/**
@@ -452,6 +552,33 @@ final class Jobs {
 			static fn( array $row ): string => Util::key( (string) $row['object_type'], (int) $row['source_id'] ),
 			(array) $rows
 		);
+	}
+
+	/**
+	 * Returns the targets chosen by hand for a job's objects, by object key:
+	 * a local ID on the target, or `create`.
+	 *
+	 * @param int $job_id Job ID.
+	 *
+	 * @return array<string, int|string>
+	 */
+	public static function overrides( int $job_id ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare( 'SELECT object_type, source_id, override FROM %i WHERE job_id = %d AND override IS NOT NULL', Database::table( 'items' ), $job_id ),
+			ARRAY_A
+		);
+
+		$overrides = array();
+		foreach ( (array) $rows as $row ) {
+			$target = Util::decode( $row['override'] )['target'] ?? null;
+			if ( null !== $target ) {
+				$overrides[ Util::key( (string) $row['object_type'], (int) $row['source_id'] ) ] = $target;
+			}
+		}
+
+		return $overrides;
 	}
 
 	/**

@@ -84,6 +84,31 @@ final class Snapshots {
 	}
 
 	/**
+	 * Returns what a job recorded for an object: `create`, `update` or `trash`.
+	 *
+	 * @param string $job      Job UUID.
+	 * @param string $type     post, term, menu or form.
+	 * @param int    $local_id Local ID.
+	 *
+	 * @return string|null Null when the job hasn't touched the object.
+	 */
+	public static function action( string $job, string $type, int $local_id ): ?string {
+		global $wpdb;
+
+		$action = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+			$wpdb->prepare(
+				'SELECT action FROM %i WHERE job_uuid = %s AND object_type = %s AND local_id = %d ORDER BY id LIMIT 1',
+				Database::table( 'snapshots' ),
+				$job,
+				$type,
+				$local_id
+			)
+		);
+
+		return null === $action ? null : (string) $action;
+	}
+
+	/**
 	 * Counts a job's snapshots.
 	 *
 	 * @param string $job Job UUID.
@@ -118,66 +143,84 @@ final class Snapshots {
 	 * Undoes a job: restores what it overwrote, removes what it created and
 	 * untrashes what it trashed, newest change first.
 	 *
-	 * @param string $job Job UUID.
+	 * Each snapshot is deleted as soon as it is applied, so an undo can be
+	 * done in several requests: with a deadline it stops when the time is up
+	 * and reports how many snapshots remain; calling it again carries on.
 	 *
-	 * @return array{restored: int, removed: int, untrashed: int, errors: string[]}
+	 * @param string     $job      Job UUID.
+	 * @param float|null $deadline Microtime to stop at, or null to finish in one go.
+	 *
+	 * @return array{restored: int, removed: int, untrashed: int, errors: string[], remaining: int}
 	 */
-	public static function undo( string $job ): array {
+	public static function undo( string $job, ?float $deadline = null ): array {
 		global $wpdb;
-
-		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
-			$wpdb->prepare( 'SELECT * FROM %i WHERE job_uuid = %s ORDER BY id DESC', Database::table( 'snapshots' ), $job ),
-			ARRAY_A
-		);
 
 		$summary = array(
 			'restored'  => 0,
 			'removed'   => 0,
 			'untrashed' => 0,
 			'errors'    => array(),
+			'remaining' => 0,
 		);
 
 		$kses = Importer::kses_off();
 		/** This action is documented in includes/sync/class-importer.php */
 		do_action( 'jcore_silta_writes_start', array() );
-		foreach ( (array) $rows as $row ) {
-			$data = Util::decode( $row['data'] );
-			$id   = (int) $row['local_id'];
+		$applied = 0;
+		do {
+			// A few at a time: a snapshot holds a whole post.
+			$rows = (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+				$wpdb->prepare( 'SELECT * FROM %i WHERE job_uuid = %s ORDER BY id DESC LIMIT 20', Database::table( 'snapshots' ), $job ),
+				ARRAY_A
+			);
 
-			try {
-				switch ( $row['action'] ) {
-					case 'create':
-						self::remove( (string) $row['object_type'], $id );
-						if ( ! empty( $data['site'] ) ) {
-							Mapping::delete( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'] );
-						}
-						++$summary['removed'];
-						break;
-
-					case 'update':
-						self::restore( (string) $row['object_type'], $id, $data );
-						if ( ! empty( $data['site'] ) ) {
-							Mapping::restore( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'], $data['mapping'] ?? null );
-						}
-						++$summary['restored'];
-						break;
-
-					case 'trash':
-						wp_untrash_post( $id );
-						++$summary['untrashed'];
-						break;
+			foreach ( $rows as $row ) {
+				// At least one per call, so every call gets somewhere.
+				if ( null !== $deadline && $applied > 0 && microtime( true ) >= $deadline ) {
+					break 2;
 				}
-			} catch ( \Throwable $e ) {
-				$summary['errors'][] = sprintf( '%s #%d: %s', $row['object_type'], $id, $e->getMessage() );
+
+				$data = Util::decode( $row['data'] );
+				$id   = (int) $row['local_id'];
+
+				try {
+					switch ( $row['action'] ) {
+						case 'create':
+							self::remove( (string) $row['object_type'], $id, ! empty( $data['shared'] ) );
+							if ( ! empty( $data['site'] ) ) {
+								Mapping::delete( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'] );
+							}
+							++$summary['removed'];
+							break;
+
+						case 'update':
+							self::restore( (string) $row['object_type'], $id, $data );
+							if ( ! empty( $data['site'] ) ) {
+								Mapping::restore( (string) $data['site'], Mapping::type_for( (string) $row['object_type'] ), (int) $data['remote_id'], $data['mapping'] ?? null );
+							}
+							++$summary['restored'];
+							break;
+
+						case 'trash':
+							wp_untrash_post( $id );
+							++$summary['untrashed'];
+							break;
+					}
+				} catch ( \Throwable $e ) {
+					$summary['errors'][] = sprintf( '%s #%d: %s', $row['object_type'], $id, $e->getMessage() );
+				}
+
+				$wpdb->delete( Database::table( 'snapshots' ), array( 'id' => (int) $row['id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+				++$applied;
 			}
-		}
+		} while ( ! empty( $rows ) );
 		/** This action is documented in includes/sync/class-importer.php */
 		do_action( 'jcore_silta_writes_done' );
 		if ( $kses ) {
 			kses_init_filters();
 		}
 
-		$wpdb->delete( Database::table( 'snapshots' ), array( 'job_uuid' => $job ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table.
+		$summary['remaining'] = self::count( $job );
 
 		return $summary;
 	}
